@@ -70,7 +70,18 @@ def get_config(model: str,
             logger.info("Updating %s from %r to %r", key,
                         getattr(config, key, None), value)
             config.update({key: value})
-    return config
+    if trust_remote_code:
+
+        # with trust_remote_code, the config is typically an instance of a
+        # dynamically imported configuration class in the HF modules cache.
+        # This class cannot be sent to a remote worker unless the worker can
+        # import that custom module. In a multi-node serving context, the custom
+        # module may not exist. Here we convert to PretrainedConfig (while
+        # preserving attributes) to avoid complications with communicating the
+        # dynamically imported custom config class between distributed workers
+        return PretrainedConfig(**config.to_dict())
+    else:
+        return config
 
 
 def get_hf_text_config(config: PretrainedConfig):

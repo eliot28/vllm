@@ -4,15 +4,12 @@ from collections import defaultdict
 from itertools import islice, repeat
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from transformers import PretrainedConfig
-
 import vllm.envs as envs
 from vllm.executor.distributed_gpu_executor import (  # yapf: disable
     DistributedGPUExecutor, DistributedGPUExecutorAsync)
 from vllm.executor.ray_utils import RayWorkerWrapper, ray
 from vllm.logger import init_logger
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
-from vllm.transformers_utils.config import get_hf_text_config
 from vllm.utils import (_run_task_with_lock,
                         error_on_invalid_device_count_status,
                         get_distributed_init_method, get_ip, get_open_port,
@@ -220,19 +217,6 @@ class RayGPUExecutor(DistributedGPUExecutor):
             driver_ip, get_open_port())
 
         error_on_invalid_device_count_status()
-
-        # with trust_remote_code, the hf_config is often an instance of a
-        # dynamically generated configuration class in the HF modules cache.
-        # This class cannot be sent to a remote worker unless the worker can
-        # import that module. On a separate node, the generated module may not
-        # exist. Here we convert the configuration to a PretrainedConfig which
-        # can be transferred without the dynamic module (but preserves the
-        # attributes)
-        if self.model_config.trust_remote_code:
-            self.model_config.hf_config = PretrainedConfig(
-                **self.model_config.hf_config.to_dict())
-            self.model_config.hf_text_config = get_hf_text_config(
-                self.model_config.hf_config)
 
         # Initialize the actual workers inside worker wrapper.
         init_worker_all_kwargs = [
