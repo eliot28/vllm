@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from vllm.utils import is_cpu, is_hip, is_tpu, is_xpu
+from vllm.utils import is_cpu, is_hip, is_hpu, is_tpu, is_xpu
 
 
 class CustomOp(nn.Module):
@@ -41,10 +41,9 @@ class CustomOp(nn.Module):
         # NOTE(woosuk): This is a placeholder for future extensions.
         return self.forward_native(*args, **kwargs)
 
-    def forward_gaudi(self, *args, **kwargs):
+    def forward_hpu(self, *args, **kwargs):
         # By default, we assume that Gaudi ops are compatible with the
         # PyTorch-native implementation.
-        # NOTE(woosuk): This is a placeholder for future extensions.
         return self.forward_native(*args, **kwargs)
 
     def dispatch_forward(self):
@@ -54,6 +53,8 @@ class CustomOp(nn.Module):
             return self.forward_hip
         elif is_cpu():
             return self.forward_cpu
+        elif is_hpu():
+            return self.forward_hpu
         elif is_tpu():
             return self.forward_tpu
         elif is_xpu():

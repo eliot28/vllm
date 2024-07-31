@@ -8,7 +8,7 @@ import torch
 from vllm.sampling_params import SamplingParams, SamplingType
 from vllm.sequence import SequenceData, SequenceGroupMetadata
 from vllm.triton_utils.sample import get_num_triton_sampler_splits
-from vllm.utils import (async_tensor_h2d, is_pin_memory_available,
+from vllm.utils import (async_tensor_h2d, is_hpu, is_pin_memory_available,
                         make_tensor_with_pad, maybe_expand_dim)
 
 _SAMPLING_EPS = 1e-5
@@ -535,10 +535,12 @@ class SamplingTensors:
             dtype=torch.int,
             pin_memory=pin_memory,
         )
+        idx_dtype = torch.long if not is_hpu(
+        ) else torch.int  # Gaudi doesn't have full native int64 support
         sample_indices_t = torch.tensor(
             sample_indices,
             device="cpu",
-            dtype=torch.long,
+            dtype=idx_dtype,
             pin_memory=pin_memory,
         )
         # need to transpose and make contiguous to
@@ -547,7 +549,7 @@ class SamplingTensors:
         sampling_seeds_t = torch.tensor(
             sampling_seeds,
             device="cpu",
-            dtype=torch.long,
+            dtype=idx_dtype,
             pin_memory=pin_memory,
         ).T.contiguous()
 
@@ -596,7 +598,9 @@ class SamplingTensors:
             else:
                 generator = random.Random(str((seed, ) + extra_entropy))
                 randint_fn = generator.randint
-            lo, hi = torch.iinfo(torch.long).min, torch.iinfo(torch.long).max
+            idx_dtype = torch.long if not is_hpu(
+            ) else torch.int  # Gaudi doesn't have full native int64 support
+            lo, hi = torch.iinfo(idx_dtype).min, torch.iinfo(idx_dtype).max
             # If the user/random sets seed = 0 but request should
             # have sampling, we need to change it to something
             # else. We use a constant in that case.

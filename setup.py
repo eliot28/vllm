@@ -234,10 +234,28 @@ class cmake_build_ext(build_ext):
         subprocess.check_call(["cmake", *build_args], cwd=self.build_temp)
 
 
+def _is_hpu() -> bool:
+    is_hpu_available = True
+    try:
+        subprocess.run(["hl-smi"], capture_output=True, check=True)
+    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
+        if not os.path.exists('/dev/accel/accel0') and not os.path.exists(
+                '/dev/accel/accel_controlD0'):
+            # last resort...
+            try:
+                output = subprocess.check_output(
+                    'lsmod | grep habanalabs | wc -l', shell=True)
+                is_hpu_available = int(output) > 0
+            except (ValueError, FileNotFoundError, PermissionError,
+                    subprocess.CalledProcessError):
+                is_hpu_available = False
+    return is_hpu_available or VLLM_TARGET_DEVICE == "hpu"
+
+
 def _is_cuda() -> bool:
     has_cuda = torch.version.cuda is not None
     return (VLLM_TARGET_DEVICE == "cuda" and has_cuda
-            and not (_is_neuron() or _is_tpu()))
+            and not (_is_neuron() or _is_tpu() or _is_hpu()))
 
 
 def _is_hip() -> bool:
@@ -350,6 +368,23 @@ def find_version(filepath: str) -> str:
         raise RuntimeError("Unable to find version string.")
 
 
+def get_gaudi_sw_version():
+    """
+    Returns the driver version.
+    """
+    # Enable console printing for `hl-smi` check
+    output = subprocess.run("hl-smi",
+                            shell=True,
+                            text=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            env={"ENABLE_CONSOLE": "true"})
+    if output.returncode == 0 and output.stdout:
+        return output.stdout.split("\n")[2].replace(
+            " ", "").split(":")[1][:-1].split("-")[0]
+    return "0.0.0"  # when hl-smi is not available
+
+
 def get_vllm_version() -> str:
     version = find_version(get_path("vllm", "version.py"))
 
@@ -370,6 +405,12 @@ def get_vllm_version() -> str:
         if neuron_version != MAIN_CUDA_VERSION:
             neuron_version_str = neuron_version.replace(".", "")[:3]
             version += f"+neuron{neuron_version_str}"
+    elif _is_hpu():
+        # Get the Intel Gaudi Software Suite version
+        gaudi_sw_version = str(get_gaudi_sw_version())
+        if gaudi_sw_version != MAIN_CUDA_VERSION:
+            gaudi_sw_version = gaudi_sw_version.replace(".", "")[:3]
+            version += f"+gaudi{gaudi_sw_version}"
     elif _is_openvino():
         version += "+openvino"
     elif _is_tpu():
@@ -423,6 +464,8 @@ def get_requirements() -> List[str]:
         requirements = _read_requirements("requirements-rocm.txt")
     elif _is_neuron():
         requirements = _read_requirements("requirements-neuron.txt")
+    elif _is_hpu():
+        requirements = _read_requirements("requirements-hpu.txt")
     elif _is_openvino():
         requirements = _read_requirements("requirements-openvino.txt")
     elif _is_tpu():
@@ -433,7 +476,7 @@ def get_requirements() -> List[str]:
         requirements = _read_requirements("requirements-xpu.txt")
     else:
         raise ValueError(
-            "Unsupported platform, please use CUDA, ROCm, Neuron, "
+            "Unsupported platform, please use CUDA, ROCm, Neuron, HPU, "
             "OpenVINO, or CPU.")
     return requirements
 

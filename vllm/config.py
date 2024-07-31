@@ -12,7 +12,7 @@ from vllm.model_executor.models import ModelRegistry
 from vllm.tracing import is_otel_installed
 from vllm.transformers_utils.config import get_config, get_hf_text_config
 from vllm.utils import (cuda_device_count_stateless, get_cpu_memory, is_cpu,
-                        is_hip, is_neuron, is_openvino, is_tpu, is_xpu,
+                        is_hip, is_hpu, is_neuron, is_openvino, is_tpu, is_xpu,
                         print_warning_once)
 
 if TYPE_CHECKING:
@@ -857,6 +857,8 @@ class DeviceConfig:
             # Automated device type detection
             if is_neuron():
                 self.device_type = "neuron"
+            elif is_hpu():
+                self.device_type = "hpu"
             elif is_openvino():
                 self.device_type = "openvino"
             elif is_tpu():

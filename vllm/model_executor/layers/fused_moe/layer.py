@@ -11,6 +11,10 @@ from vllm.model_executor.custom_op import CustomOp
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig, QuantizeMethodBase)
 from vllm.model_executor.utils import set_weight_attrs
+from vllm.utils import is_hpu
+
+if is_hpu():
+    from vllm.hpu.ops import static_fused_moe
 
 logger = init_logger(__name__)
 
@@ -99,6 +103,16 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
                          use_grouped_topk=use_grouped_topk,
                          num_expert_group=num_expert_group,
                          topk_group=topk_group)
+
+    def forward_hpu(self, x: torch.Tensor, w1: torch.Tensor, w2: torch.Tensor,
+                    router_logits: torch.Tensor, top_k: int, renormalize: bool,
+                    use_grouped_topk: bool, num_expert_group: Optional[int],
+                    topk_group: Optional[int]):
+        assert not use_grouped_topk, 'use_grouped_topk must be False on HPU'
+        assert num_expert_group is None, ('num_expert_group is '
+                                          'not supported on HPU')
+        assert topk_group is None, 'topk_group is not supported on HPU'
+        return static_fused_moe(x, w1, w2, router_logits, top_k)
 
     def forward_cpu(self, *args, **kwargs):
         raise NotImplementedError(

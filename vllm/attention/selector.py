@@ -8,7 +8,7 @@ import vllm.envs as envs
 from vllm.attention.backends.abstract import AttentionBackend
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
-from vllm.utils import is_cpu, is_hip, is_openvino, is_tpu, is_xpu
+from vllm.utils import is_cpu, is_hip, is_hpu, is_openvino, is_tpu, is_xpu
 
 logger = init_logger(__name__)
 
@@ -20,6 +20,7 @@ class _Backend(enum.Enum):
     TORCH_SDPA = enum.auto()
     OPENVINO = enum.auto()
     FLASHINFER = enum.auto()
+    HABANA_ATTN = enum.auto()
     PALLAS = enum.auto()
     IPEX = enum.auto()
 
@@ -80,6 +81,11 @@ def get_attn_backend(
         logger.info("Using Flashinfer backend.")
         from vllm.attention.backends.flashinfer import FlashInferBackend
         return FlashInferBackend
+    elif backend == _Backend.HABANA_ATTN:
+        logger.info("Using HabanaAttention backend.")
+        from vllm.attention.backends.habana_attn import (  # noqa: F401
+            HabanaAttentionBackend)
+        return HabanaAttentionBackend
     elif backend == _Backend.PALLAS:
         logger.info("Using Pallas backend.")
         from vllm.attention.backends.pallas import PallasAttentionBackend
@@ -143,6 +149,9 @@ def which_attn_to_use(
         else:
             logger.info("%s is not supported in AMD GPUs.", selected_backend)
         return _Backend.ROCM_FLASH
+
+    if is_hpu():
+        return _Backend.HABANA_ATTN
 
     # FlashAttn in NVIDIA GPUs.
     if selected_backend == _Backend.FLASH_ATTN:

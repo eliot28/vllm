@@ -418,6 +418,15 @@ class AsyncLLMEngine:
         elif engine_config.device_config.device_type == "cpu":
             from vllm.executor.cpu_executor import CPUExecutorAsync
             executor_class = CPUExecutorAsync
+        elif engine_config.device_config.device_type == "hpu":
+            if distributed_executor_backend == "ray":
+                initialize_ray_cluster(engine_config.parallel_config)
+                from vllm.executor.ray_habana_executor import (
+                    RayHabanaExecutorAsync)
+                executor_class = RayHabanaExecutorAsync
+            else:
+                from vllm.executor.habana_executor import HabanaExecutorAsync
+                executor_class = HabanaExecutorAsync
         elif engine_config.device_config.device_type == "openvino":
             assert distributed_executor_backend is None, (
                 "Distributed execution is not supported with "
