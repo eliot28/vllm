@@ -1,6 +1,7 @@
 import contextlib
 from typing import Dict, Optional, Type
 
+import ray
 from transformers import GenerationConfig, PretrainedConfig
 
 from vllm.envs import VLLM_USE_MODELSCOPE
@@ -70,18 +71,28 @@ def get_config(model: str,
             logger.info("Updating %s from %r to %r", key,
                         getattr(config, key, None), value)
             config.update({key: value})
-    if trust_remote_code:
 
-        # with trust_remote_code, the config is typically an instance of a
-        # dynamically imported configuration class in the HF modules cache.
-        # This class cannot be sent to a remote worker unless the worker can
-        # import that custom module. In a multi-node serving context, the custom
-        # module may not exist. Here we convert to PretrainedConfig (while
-        # preserving attributes) to avoid complications with communicating the
-        # dynamically imported custom config class between distributed workers
-        return PretrainedConfig(**config.to_dict())
-    else:
-        return config
+    if trust_remote_code:
+        # With trust_remote_code, the config is typically an instance of a
+        # custom class imported from the HF modules cache.
+        #
+        # The class will not be importable in Ray workers by default (and won't
+        # exist at all on other nodes), which breaks serialization of the
+        # config. Here we tell the serialization library used by Ray to pass
+        # instances of these generated classes by value instead of by reference
+        # (eg. the class definition is serialized along with its data).
+        #
+        # See: https://github.com/cloudpipe/cloudpickle?tab=readme-ov-file#overriding-pickles-serialization-mechanism-for-importable-constructs
+        try:
+            import transformers_modules
+            ray.cloudpickle.register_pickle_by_value(transformers_modules)
+
+        # ignore import errors in the case that trust_remote_code is set
+        # unnecessarily
+        except ImportError:
+            pass
+
+    return config
 
 
 def get_hf_text_config(config: PretrainedConfig):
