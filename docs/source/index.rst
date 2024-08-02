@@ -30,7 +30,7 @@ vLLM is fast with:
 * State-of-the-art serving throughput
 * Efficient management of attention key and value memory with **PagedAttention**
 * Continuous batching of incoming requests
-* Fast model execution with the CUDA/HIP graph
+* Fast model execution with CUDA/HIP graph
 * Quantization: `GPTQ <https://arxiv.org/abs/2210.17323>`_, `AWQ <https://arxiv.org/abs/2306.00978>`_, `SqueezeLLM <https://arxiv.org/abs/2306.07629>`_, FP8 KV Cache
 * Optimized CUDA kernels
 
