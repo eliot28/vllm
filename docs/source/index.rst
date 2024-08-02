@@ -42,7 +42,7 @@ vLLM is flexible and easy to use with:
 * Streaming outputs
 * OpenAI-compatible API server
 * Supported NVIDIA GPUs and AMD GPUs
-* (Experimental) The prefix caching support
+* (Experimental) Prefix caching support
 * (Experimental) Multi-lora support
 
 For more information, check out the following:
