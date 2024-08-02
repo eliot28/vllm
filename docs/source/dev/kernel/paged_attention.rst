@@ -27,7 +27,7 @@ Inputs
 -  The kernel function takes a list of arguments for the current thread
    to perform its assigned work. The three most important arguments are
    the ``q``, ``k_cache``, and ``v_cache`` input pointers, which point
-   to a query, a key, and value data on global memory that need to be read
+   to query, key, and value data on global memory that need to be read
    and processed. The ``out`` output pointer points to global memory
    where the result should be written. These four pointers actually
    refer to multi-dimensional arrays, but each thread only accesses the
