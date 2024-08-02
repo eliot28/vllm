@@ -40,7 +40,7 @@ vLLM is flexible and easy to use with:
 * High-throughput serving with various decoding algorithms, including *parallel sampling*, *beam search*, and more
 * Tensor parallelism and pipeline parallelism support for distributed inference
 * Streaming outputs
-* The OpenAI-compatible API server
+* OpenAI-compatible API server
 * Supported NVIDIA GPUs and AMD GPUs
 * (Experimental) The prefix caching support
 * (Experimental) Multi-lora support
