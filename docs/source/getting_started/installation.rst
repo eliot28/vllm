@@ -74,7 +74,7 @@ You can also build and install vLLM from source:
 
 .. tip::
 
-   To avoid your system being overloaded, you can limit the number of compilation jobs to be run simultaneously via the `MAX_JOBS` environment variable. For example:
+   To avoid your system being overloaded, you can limit the number of compilation jobs to be run simultaneously via the ``MAX_JOBS`` environment variable. For example:
 
    .. code-block:: console
 
