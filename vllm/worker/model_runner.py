@@ -12,6 +12,8 @@ import torch
 import torch.distributed
 import torch.nn as nn
 
+import vllm.distributed.distributed_kv as dist_kv
+
 try:
     from flashinfer import BatchDecodeWithPagedKVCacheWrapper
     from flashinfer.decode import CUDAGraphBatchDecodeWithPagedKVCacheWrapper
@@ -28,7 +30,7 @@ from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, MultiModalConfig, ParallelConfig,
                          PromptAdapterConfig, SchedulerConfig)
-from vllm.distributed import get_pp_group
+from vllm.distributed import get_tp_group, get_pp_group, get_disagg_group
 from vllm.distributed.parallel_state import graph_capture
 from vllm.inputs import INPUT_REGISTRY
 from vllm.logger import init_logger
@@ -59,6 +61,9 @@ from vllm.worker.model_runner_base import (
     _add_sampling_metadata_broadcastable_dict,
     _init_attn_metadata_from_tensor_dict,
     _init_sampling_metadata_from_tensor_dict)
+
+import vllm.envs as envs
+from vllm import _custom_ops as ops
 
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
@@ -1360,7 +1365,23 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             "finished_requests_ids": model_input.finished_requests_ids,
             "request_ids_to_seq_ids": model_input.request_ids_to_seq_ids,
         } if self.has_seqlen_agnostic else {}
-        hidden_or_intermediate_states = model_executable(
+
+        # check if the current run is profiling
+        is_profile_run = (kv_caches is None) or (kv_caches[0] is None)
+        # check if the current run is prefill
+        is_prefill_run = prefill_meta is not None
+
+        # check if we can skip prefilling
+        # We can only skip during prefill phase in disaggregated decode instance
+        if any([
+            not is_prefill_run,
+            not dist_kv.IS_KV_DECODE_INSTANCE,
+            is_profile_run]):
+
+            # model forwarding
+            # during forwarding the KV cache will be sent in prefill instance
+            # see vllm/attention/backends/flash_attn.py for sending impl
+            hidden_or_intermediate_states = model_executable(
             input_ids=model_input.input_tokens,
             positions=model_input.input_positions,
             kv_caches=kv_caches,
@@ -1369,11 +1390,36 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             **MultiModalInputs.as_kwargs(multi_modal_kwargs,
                                          device=self.device),
             **seqlen_agnostic_kwargs)
+            
+            
+            if all([
+                is_prefill_run,
+                dist_kv.IS_KV_PREFILL_INSTANCE,
+                not is_profile_run]):
+                
+                # transfer KV cache and hidden state
+                dist_kv.buffer_kv_caches_send_and_listen_for_input_hash(
+                    model_executable,
+                    model_input,
+                    kv_caches,
+                    hidden_or_intermediate_states,
+                )
+                
+        else:
+            
+            # skip prefill, receive KV cache and hidden state
+            hidden_or_intermediate_states = \
+                dist_kv.send_input_hash_and_do_kv_caches_recv(
+                    model_executable,
+                    model_input,
+                    kv_caches,
+                )
+                
 
         # Compute the logits in the last pipeline stage.
         if not get_pp_group().is_last_rank:
             return hidden_or_intermediate_states
-
+        
         logits = self.model.compute_logits(hidden_or_intermediate_states,
                                            model_input.sampling_metadata)
 
@@ -1385,6 +1431,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             logits=logits,
             sampling_metadata=model_input.sampling_metadata,
         )
+
 
         if self.return_hidden_states:
             # we only need to pass hidden states of most recent token

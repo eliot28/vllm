@@ -388,13 +388,20 @@ def get_distributed_init_method(ip: str, port: int) -> str:
     return f"tcp://[{ip}]:{port}" if ":" in ip else f"tcp://{ip}:{port}"
 
 
-def get_open_port(port: Optional[int] = None) -> int:
+def get_open_port(port: Optional[int] = None, force: bool = False) -> int:
     if port is None:
         # Default behavior here is to return a port for multi-gpu communication
         port = envs.VLLM_PORT
     if port is not None:
+        if force and port is not None:
+            # force vLLM to use envs.VLLM_PORT for torch.distributed init
+            # This is because this port will binded by prefill instance
+            # But both prefill and decode instance need to use this port to 
+            # initialize torch.distributed
+            return port
         while True:
             try:
+                logger.error('Trying port %d', port)
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.bind(("", port))
                     return port
