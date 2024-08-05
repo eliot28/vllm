@@ -50,8 +50,8 @@ from vllm.prompt_adapter.worker_manager import (
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import (IntermediateTensors, SamplerOutput,
                            SequenceGroupMetadata)
-from vllm.utils import (CudaMemoryProfiler, flatten_2d_lists,
-                        get_kv_cache_torch_dtype, is_hip,
+from vllm.utils import (CudaMemoryProfiler, create_torch_tensor_from_1d_list,
+                        flatten_2d_lists, get_kv_cache_torch_dtype, is_hip,
                         is_pin_memory_available)
 from vllm.worker.model_runner_base import (
     ModelRunnerBase, ModelRunnerInputBase, ModelRunnerInputBuilderBase,
@@ -295,6 +295,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         self.multi_modal_input_mapper = self.runner.multi_modal_input_mapper
         self.finished_requests_ids = finished_requests_ids
         self.decode_only = True
+        self.max_decode_seq_len = 0
 
         # Intermediate data (data in CPU before going to GPU) for
         # the current sequence group.
@@ -424,8 +425,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         if lora_id > 0:
             inter_data.lora_requests.add(seq_group_metadata.lora_request)
         query_len = inter_data.query_lens[seq_idx]
-        inter_data.lora_index_mapping.append([lora_id] * query_len)
-        inter_data.lora_prompt_mapping.append(
+        inter_data.lora_index_mapping[seq_idx] = [lora_id] * query_len
+        inter_data.lora_prompt_mapping[seq_idx] = (
             [lora_id] *
             (query_len if seq_group_metadata.sampling_params
              and seq_group_metadata.sampling_params.prompt_logprobs is not None
@@ -475,10 +476,6 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         n_seqs = len(seq_ids)
         is_prompt = seq_group_metadata.is_prompt
 
-        if is_prompt:
-            assert n_seqs == 1
-            self.decode_only = False
-
         inter_data = self.InterDataForSeqGroup(
             request_id=seq_group_metadata.request_id,
             seq_ids=seq_ids,
@@ -493,11 +490,17 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         for per_seq_group_fn in self.per_seq_group_compute_fns:
             per_seq_group_fn(inter_data, seq_group_metadata)
 
-    def _use_captured_graph(self, batch_size: int,
-                            max_decode_seq_len: int) -> bool:
+        if is_prompt:
+            assert n_seqs == 1
+            self.decode_only = False
+        else:
+            self.max_decode_seq_len = max(self.max_decode_seq_len,
+                                          max(inter_data.seq_lens))
+
+    def _use_captured_graph(self, batch_size: int) -> bool:
         return (self.decode_only and not self.runner.model_config.enforce_eager
-                and batch_size <= _BATCH_SIZES_TO_CAPTURE[-1]
-                and max_decode_seq_len <= self.runner.max_seq_len_to_capture)
+                and batch_size <= _BATCH_SIZES_TO_CAPTURE[-1] and
+                self.max_decode_seq_len <= self.runner.max_seq_len_to_capture)
 
     def build(self) -> ModelInputForGPU:
         """Finalize the builder intermediate data and
@@ -516,13 +519,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             flatten_2d_lists(inter_data.input_positions)
             for inter_data in self.inter_data_list
         ])
-        seq_lens = []
-        max_decode_seq_len = 0
-        for inter_data in self.inter_data_list:
-            seq_lens.extend(inter_data.seq_lens)
-            if not inter_data.is_prompt:
-                max_decode_seq_len = max(max_decode_seq_len,
-                                         max(inter_data.seq_lens))
+        seq_lens = flatten_2d_lists(
+            [inter_data.seq_lens for inter_data in self.inter_data_list])
         query_lens = flatten_2d_lists(
             [inter_data.query_lens for inter_data in self.inter_data_list])
         # Mapping from request IDs to sequence IDs. Used for Jamba models
@@ -533,8 +531,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         }
 
         batch_size = len(input_tokens)
-        use_captured_graph = self._use_captured_graph(batch_size,
-                                                      max_decode_seq_len)
+        use_captured_graph = self._use_captured_graph(batch_size)
 
         # If cuda graph can be used, pad tensors accordingly.
         # See `capture_model` API for more details.
@@ -549,12 +546,10 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         # Tokens and positions.
         input_tokens.extend([0] * cuda_graph_pad_size)
         input_positions.extend([0] * cuda_graph_pad_size)
-        input_tokens_tensor = torch.tensor(input_tokens,
-                                           dtype=torch.long,
-                                           device=self.runner.device)
-        input_positions_tensor = torch.tensor(input_positions,
-                                              dtype=torch.long,
-                                              device=self.runner.device)
+        input_tokens_tensor = create_torch_tensor_from_1d_list(
+            input_tokens, dtype=torch.long, device=self.runner.device)
+        input_positions_tensor = create_torch_tensor_from_1d_list(
+            input_positions, dtype=torch.long, device=self.runner.device)
 
         # Sequence and query lengths.
         seq_lens.extend([1] * cuda_graph_pad_size)
