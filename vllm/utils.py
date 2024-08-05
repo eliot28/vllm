@@ -781,14 +781,6 @@ def flatten_2d_lists(lists: List[List[T]]) -> List[T]:
     return [item for sublist in lists for item in sublist]
 
 
-def init_cached_hf_modules() -> None:
-    """
-    Lazy initialization of the Hugging Face modules.
-    """
-    from transformers.dynamic_module_utils import init_hf_modules
-    init_hf_modules()
-
-
 @lru_cache(maxsize=None)
 def find_library(lib_name: str) -> str:
     """

@@ -338,10 +338,6 @@ class WorkerWrapperBase:
         self.worker_class_name = worker_class_name
         self.worker_class_fn = worker_class_fn
         self.worker: Optional[WorkerBase] = None
-        if trust_remote_code:
-            # note: lazy import to avoid importing torch before initializing
-            from vllm.utils import init_cached_hf_modules
-            init_cached_hf_modules()
 
     @staticmethod
     def update_environment_variables(envs: Dict[str, str]) -> None:
