@@ -149,6 +149,22 @@ async def health() -> Response:
     return Response(status_code=200)
 
 
+@router.get(
+    "/ready",
+    name="readiness",
+    tags=["technical"],
+)
+async def get_readiness() -> Response:
+    """Readiness probe for k8s"""
+    d_worker = openai_serving_chat.engine.engine.model_executor.driver_worker
+    model_weights = d_worker.model_runner.model_memory_usage
+
+    if model_weights > 0:
+        return Response(status_code=200)
+    else:
+        return Response(status_code=500)
+
+
 @router.post("/tokenize")
 async def tokenize(request: TokenizeRequest):
     generator = await openai_serving_tokenization.create_tokenize(request)
