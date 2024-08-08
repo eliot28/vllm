@@ -21,7 +21,8 @@ from vllm.entrypoints.openai.protocol import (
     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ErrorResponse,
     FunctionCall, ToolCall, UsageInfo)
-from vllm.entrypoints.openai.serving_engine import (LoRAModulePath,
+from vllm.entrypoints.openai.serving_engine import (BaseModelPath,
+                                                    LoRAModulePath,
                                                     OpenAIServing,
                                                     PromptAdapterPath)
 from vllm.inputs import PromptInputs
@@ -42,7 +43,7 @@ class OpenAIServingChat(OpenAIServing):
         self,
         async_engine_client: AsyncEngineClient,
         model_config: ModelConfig,
-        served_model_names: List[str],
+        base_model_paths: List[BaseModelPath],
         response_role: str,
         *,
         lora_modules: Optional[List[LoRAModulePath]],
@@ -53,7 +54,7 @@ class OpenAIServingChat(OpenAIServing):
     ):
         super().__init__(async_engine_client=async_engine_client,
                          model_config=model_config,
-                         served_model_names=served_model_names,
+                         base_model_paths=base_model_paths,
                          lora_modules=lora_modules,
                          prompt_adapters=prompt_adapters,
                          request_logger=request_logger,
@@ -206,7 +207,7 @@ class OpenAIServingChat(OpenAIServing):
         conversation: List[ConversationMessage],
         tokenizer: PreTrainedTokenizer,
     ) -> AsyncGenerator[str, None]:
-        model_name = self.served_model_names[0]
+        model_name = self.base_model_paths[0].name
         created_time = int(time.time())
         chunk_object_type = "chat.completion.chunk"
         first_iteration = True
@@ -431,7 +432,7 @@ class OpenAIServingChat(OpenAIServing):
         tokenizer: PreTrainedTokenizer,
     ) -> Union[ErrorResponse, ChatCompletionResponse]:
 
-        model_name = self.served_model_names[0]
+        model_name = self.base_model_paths[0].name
         created_time = int(time.time())
         final_res: Optional[RequestOutput] = None
 
