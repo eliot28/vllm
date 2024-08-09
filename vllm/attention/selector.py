@@ -84,6 +84,14 @@ def get_attn_backend(
         logger.info("Using Pallas backend.")
         from vllm.attention.backends.pallas import PallasAttentionBackend
         return PallasAttentionBackend
+    # TODO
+    # MINDIE 和 Torch_NPU 同一个backend还是不同的backend
+    elif backend == _Backend.Ascend_MINDIE:
+        from vllm.attention.backends.ascend import AscendAttentionBackend
+        return AscendAttentionBackend
+    elif backend == _Backend.Ascend_TORCH:
+        from vllm.attention.backends.ascend import AscendAttentionBackend
+        return AscendAttentionBackend
     else:
         raise ValueError("Invalid attention backend.")
 
@@ -144,6 +152,16 @@ def which_attn_to_use(
             logger.info("%s is not supported in AMD GPUs.", selected_backend)
         return _Backend.ROCM_FLASH
 
+    if is_npu():
+        # TODO
+        # Ascend NPU
+        if selected_backend == _Backend.ASCEND_MINDIE:
+            return _Backend.ASCEND_MINDIE
+        elif selected_backend == _Backend.ASCEND_TORCH:
+            return _Backend.ASCEND_TORCH
+        else:
+            logger.info("%s is not supported in Ascend NPUs.", selected_backend)
+        return _Backend.ASCEND_MINDIE
     # FlashAttn in NVIDIA GPUs.
     if selected_backend == _Backend.FLASH_ATTN:
         if current_platform.get_device_capability()[0] < 8:
