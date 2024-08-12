@@ -8,7 +8,7 @@ import vllm.envs as envs
 from vllm.attention.backends.abstract import AttentionBackend
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
-from vllm.utils import is_cpu, is_hip, is_openvino, is_tpu, is_xpu
+from vllm.utils import is_cpu, is_hip, is_npu, is_openvino, is_tpu, is_xpu
 
 logger = init_logger(__name__)
 
@@ -22,6 +22,7 @@ class _Backend(enum.Enum):
     FLASHINFER = enum.auto()
     PALLAS = enum.auto()
     IPEX = enum.auto()
+    ASCEND = enum.auto()
 
 
 @lru_cache(maxsize=None)
@@ -86,10 +87,14 @@ def get_attn_backend(
         return PallasAttentionBackend
     # TODO
     # MINDIE 和 Torch_NPU 同一个backend还是不同的backend
-    elif backend == _Backend.Ascend_MINDIE:
-        from vllm.attention.backends.ascend import AscendAttentionBackend
-        return AscendAttentionBackend
-    elif backend == _Backend.Ascend_TORCH:
+    # elif backend == _Backend.Ascend_MINDIE:
+    #     from vllm.attention.backends.ascend import AscendAttentionBackend
+    #     return AscendAttentionBackend
+    # elif backend == _Backend.Ascend_TORCH:
+    #     from vllm.attention.backends.ascend import AscendAttentionBackend
+    #     return AscendAttentionBackend
+    elif backend == _Backend.ASCEND:
+        logger.info("Using Ascend backend.")
         from vllm.attention.backends.ascend import AscendAttentionBackend
         return AscendAttentionBackend
     else:
@@ -153,15 +158,13 @@ def which_attn_to_use(
         return _Backend.ROCM_FLASH
 
     if is_npu():
-        # TODO
+        # TODO: torch and mindie
         # Ascend NPU
-        if selected_backend == _Backend.ASCEND_MINDIE:
-            return _Backend.ASCEND_MINDIE
-        elif selected_backend == _Backend.ASCEND_TORCH:
-            return _Backend.ASCEND_TORCH
+        if selected_backend == _Backend.ASCEND:
+            return _Backend.ASCEND
         else:
             logger.info("%s is not supported in Ascend NPUs.", selected_backend)
-        return _Backend.ASCEND_MINDIE
+        return _Backend.ASCEND
     # FlashAttn in NVIDIA GPUs.
     if selected_backend == _Backend.FLASH_ATTN:
         if current_platform.get_device_capability()[0] < 8:

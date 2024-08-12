@@ -22,9 +22,7 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import ExecuteModelRequest
 from vllm.worker.cache_engine import CacheEngine
 from vllm.worker.embedding_model_runner import EmbeddingModelRunner
-
-#from vllm.worker.model_runner import GPUModelRunnerBase, ModelRunner
-from vllm.worker.npu_model_runner import NPUModelRunnerBase, ModelRunner
+from vllm.worker.npu_model_runner import NPUModelRunnerBase, NPUModelRunner
 from vllm.worker.worker_base import LocalOrDistributedWorkerBase, WorkerInput
 
 
@@ -85,7 +83,7 @@ class NPUWorker(LocalOrDistributedWorkerBase):
                 not in ["medusa", "mlp_speculator"]) \
                     else {"return_hidden_states": True}
 
-        ModelRunnerClass: Type[NPUModelRunnerBase] = ModelRunner
+        ModelRunnerClass: Type[NPUModelRunnerBase] = NPUModelRunner
         if model_runner_cls is not None:
             ModelRunnerClass = model_runner_cls
         elif self.model_config.embedding_mode:
@@ -132,6 +130,7 @@ class NPUWorker(LocalOrDistributedWorkerBase):
             raise RuntimeError(
                 f"Not support device type: {self.device_config.device}")
         # Initialize the distributed environment.
+        # TODO:HCCL 适配
         init_worker_distributed_environment(self.parallel_config, self.rank,
                                             self.distributed_init_method,
                                             self.local_rank)
@@ -257,7 +256,7 @@ class NPUWorker(LocalOrDistributedWorkerBase):
         virtual_engine = execute_model_req.virtual_engine
         num_seq_groups = len(execute_model_req.seq_group_metadata_list)
         # `blocks_to_swap_in` and `blocks_to_swap_out` are cpu tensors.
-        # they contain parameters to launch cudamemcpyasync.
+        # they contain parameters to launch aclrtmemcpyasync.
         blocks_to_swap_in = torch.tensor(execute_model_req.blocks_to_swap_in,
                                          device="cpu",
                                          dtype=torch.int64).view(-1, 2)
@@ -341,12 +340,13 @@ def init_worker_distributed_environment(
     rank: int,
     distributed_init_method: Optional[str] = None,
     local_rank: int = -1,
+    backend: str = "hccl"
 ) -> None:
     """Initialize the distributed environment."""
     set_custom_all_reduce(not parallel_config.disable_custom_all_reduce)
 
     init_distributed_environment(parallel_config.world_size, rank,
-                                 distributed_init_method, local_rank)
+                                 distributed_init_method, local_rank, backend)
 
     ensure_model_parallel_initialized(parallel_config.tensor_parallel_size,
                                       parallel_config.pipeline_parallel_size)
@@ -364,6 +364,7 @@ def _check_if_npu_supports_dtype(torch_dtype: torch.dtype):
     #             f"{compute_capability[0]}.{compute_capability[1]}. "
     #             "You can use float16 instead by explicitly setting the"
     #             "`dtype` flag in CLI, for example: --dtype=half.")
+    #TODO
     pass
 
 

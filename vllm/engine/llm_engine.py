@@ -89,13 +89,13 @@ class LLMEngine:
         scheduler_config: The configuration related to the request scheduler.
         device_config: The configuration related to the device.
         lora_config (Optional): The configuration related to serving multi-LoRA.
-        multimodal_config (Optional): The configuration related to multimodal 
+        multimodal_config (Optional): The configuration related to multimodal
             models.
         speculative_config (Optional): The configuration related to speculative
             decoding.
         executor_class: The model executor class for managing distributed
             execution.
-        prompt_adapter_config (Optional): The configuration related to serving 
+        prompt_adapter_config (Optional): The configuration related to serving
             prompt adapters.
         log_stats: Whether to log statistics.
         usage_context: Specified entry point, used for usage info collection.
@@ -425,6 +425,13 @@ class LLMEngine:
                 "multiprocessing distributed executor backend does not "
                 "support VLLM_USE_RAY_SPMD_WORKER=1")
             executor_class = MultiprocessingGPUExecutor
+        elif engine_config.device_config.device_type == "npu":
+            if distributed_executor_backend == "ray":
+                # TODO
+                pass
+            else:
+                from vllm.executor.npu_executor import NPUExecutor
+                executor_class = NPUExecutor
         else:
             from vllm.executor.gpu_executor import GPUExecutor
             executor_class = GPUExecutor
