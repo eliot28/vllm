@@ -162,6 +162,9 @@ class OPTDecoderLayer(nn.Module):
         hidden_states = self.self_attn(hidden_states=hidden_states,
                                        kv_cache=kv_cache,
                                        attn_metadata=attn_metadata)
+        print(150*"@",
+            "\nhidden_states.shape: {} \nresidual.shape:{} \n".format(hidden_states.shape, residual.shape),
+            150*"@")
         hidden_states = residual + hidden_states
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
