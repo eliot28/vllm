@@ -46,14 +46,7 @@ Install from source
       $ sudo apt-get update  -y
       $ sudo apt-get install python3
 
-- Second, install prerequisites vLLM OpenVINO backend installation:
-
-  .. code-block:: console
-
-      $ pip install --upgrade pip
-      $ pip install -r requirements-build.txt --extra-index-url https://download.pytorch.org/whl/cpu
-
-- Finally, install vLLM with OpenVINO backend: 
+- Finally, install vLLM with OpenVINO backend:
 
   .. code-block:: console
 
