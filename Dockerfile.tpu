@@ -5,24 +5,16 @@ FROM $BASE_IMAGE
 WORKDIR /workspace
 
 # Install the TPU and Pallas dependencies.
+ENV PIP_FIND_LINKS="https://storage.googleapis.com/libtpu-releases/index.html https://storage.googleapis.com/jax-releases/jax_nightly_releases.html https://storage.googleapis.com/jax-releases/jaxlib_nightly_releases.html"
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install torch_xla[tpu] -f https://storage.googleapis.com/libtpu-releases/index.html
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install torch_xla[pallas] -f https://storage.googleapis.com/jax-releases/jax_nightly_releases.html -f https://storage.googleapis.com/jax-releases/jaxlib_nightly_releases.html
+    python3 -m pip install torch_xla[tpu,pallas]
 
 # Build vLLM.
 COPY . /workspace/vllm
-
-# Update the build requirements' torch version, since the base image has 2.5.0
-RUN --mount=type=cache,target=/root/.cache/pip \
-    cd /workspace/vllm && \
-    sed -i 's/torch.*==.*2.4.0/torch==2.5.0/' requirements-build.txt pyproject.toml && \
-    pip install -r requirements-build.txt
-
 ENV VLLM_TARGET_DEVICE="tpu"
 RUN cd /workspace/vllm && python3 -m pip install -r requirements-tpu.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=.git,target=.git \
-    cd /workspace/vllm && python setup.py develop
+    cd /workspace/vllm && pip install -v -e .
 
 CMD ["/bin/bash"]
