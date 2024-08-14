@@ -14,15 +14,11 @@ COPY ./ /workspace/vllm
 
 WORKDIR /workspace/vllm
 
-# Update the build requirements' torch version, since requirements-xpu.txt has 2.1.0
 RUN --mount=type=cache,target=/root/.cache/pip \
-    sed -i 's/torch.*==.*2.4.0/torch==2.1.0/' requirements-build.txt pyproject.toml && \
-    pip install -v \
-        -r requirements-build.txt \
-        -r requirements-xpu.txt
+    pip install -v -r requirements-xpu.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=.git,target=.git \
-    VLLM_TARGET_DEVICE=xpu python3 setup.py install
+    VLLM_TARGET_DEVICE=xpu pip install -v .
 
 CMD ["/bin/bash"]
