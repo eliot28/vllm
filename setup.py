@@ -11,14 +11,8 @@ from typing import Dict, List
 from packaging.version import Version, parse
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.errors import SetupError
 from setuptools_scm import get_version
-from setuptools import build_meta as _orig
-from setuptools.build_meta import *
-
-
-def get_requires_for_build_wheel(config_settings=None):
-    return _orig.get_requires_for_build_wheel(config_settings) + [...]
-
 
 
 def load_module_from_path(module_name, path):
@@ -216,18 +210,11 @@ def _no_device() -> bool:
 
 
 def _is_cuda() -> bool:
-    from torch import version
-
-    has_cuda = version.cuda is not None
-    return (VLLM_TARGET_DEVICE == "cuda" and has_cuda
-            and not (_is_neuron() or _is_tpu()))
+    return VLLM_TARGET_DEVICE == "cuda" and not (_is_neuron() or _is_tpu())
 
 
 def _is_hip() -> bool:
-    from torch import version
-
-    return (VLLM_TARGET_DEVICE == "cuda"
-            or VLLM_TARGET_DEVICE == "rocm") and version.hip is not None
+    return VLLM_TARGET_DEVICE == "cuda" or VLLM_TARGET_DEVICE == "rocm"
 
 
 def _is_neuron() -> bool:
@@ -281,9 +268,9 @@ def get_hipcc_rocm_version():
     if match:
         # Return the version string
         return match.group(1)
-    else:
-        print("Could not find HIP version in the output")
-        return None
+
+    print("Could not find HIP version in the output")
+    return None
 
 
 def get_neuronxcc_version():
@@ -332,11 +319,20 @@ def get_vllm_version() -> str:
     if _no_device():
         version += "+empty"
     elif _is_cuda():
+        from torch import version
+
+        if version.cuda is None:
+            raise SetupError("Couldn't get CUDA version")
         cuda_version = str(get_nvcc_cuda_version())
         if cuda_version != MAIN_CUDA_VERSION:
             cuda_version_str = cuda_version.replace(".", "")[:3]
             version += f"{sep}cu{cuda_version_str}"
     elif _is_hip():
+        from torch import version
+
+        if version.hip is None:
+            raise SetupError("Couldn't get hip version")
+
         # Get the HIP version
         hipcc_version = get_hipcc_rocm_version()
         if hipcc_version != MAIN_CUDA_VERSION:
