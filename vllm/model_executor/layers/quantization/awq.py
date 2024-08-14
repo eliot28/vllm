@@ -41,7 +41,7 @@ class AWQConfig(QuantizationConfig):
         return "awq"
 
     def get_supported_act_dtypes(self) -> List[torch.dtype]:
-        return [torch.half]
+        return [torch.half, torch.bfloat16]
 
     @classmethod
     def get_min_capability(cls) -> int:
@@ -138,6 +138,8 @@ class AWQLinearMethod(LinearMethodBase):
         layer.register_parameter("qweight", qweight)
         layer.register_parameter("qzeros", qzeros)
         layer.register_parameter("scales", scales)
+        
+        layer.ipex_initialized = False
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         layer.qweight = torch.nn.Parameter(layer.qweight.data,
@@ -158,15 +160,42 @@ class AWQLinearMethod(LinearMethodBase):
         out_shape = (x.shape[:-1] + (qweight.shape[-1] * pack_factor, ))
         reshaped_x = x.reshape(-1, x.shape[-1])
 
-        # num_tokens >= threshold
-        FP16_MATMUL_HEURISTIC_CONDITION = x.shape[:-1].numel() >= 256
+        # # num_tokens >= threshold
+        # FP16_MATMUL_HEURISTIC_CONDITION = x.shape[:-1].numel() >= 256
 
-        if FP16_MATMUL_HEURISTIC_CONDITION:
-            out = ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
-            out = torch.matmul(reshaped_x, out)
-        else:
-            out = ops.awq_gemm(reshaped_x, qweight, scales, qzeros,
-                               pack_factor)
-        if bias is not None:
-            out.add_(bias)
+        # if FP16_MATMUL_HEURISTIC_CONDITION:
+        #     out = ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
+        #     out = torch.matmul(reshaped_x, out)
+        # else:
+        #     out = ops.awq_gemm(reshaped_x, qweight, scales, qzeros,
+        #                        pack_factor)
+        # if bias is not None:
+        #     out.add_(bias)
+        
+        if layer.ipex_initialized == False:
+            import intel_extension_for_pytorch as ipex
+            from intel_extension_for_pytorch.quantization import (WoqWeightDtype, WoqActQuantMode)
+            from intel_extension_for_pytorch.utils.weight_only_quantization import (
+                _woq_enable_weight_cache_for_large_batch,
+            )
+
+            weight_dtype = WoqWeightDtype.INT4
+            lowp_mode = ipex.quantization.WoqLowpMode.INT8
+
+            qconfig = ipex.quantization.get_weight_only_quant_qconfig_mapping(
+                weight_dtype=weight_dtype,
+                lowp_mode=lowp_mode,
+                act_quant_mode=WoqActQuantMode.PER_IC_BLOCK,
+                group_size=self.quant_config.group_size,
+            )
+
+            qconfig = _woq_enable_weight_cache_for_large_batch(
+                qconfig
+            )
+
+            layer.ipex_qlinear = ipex.nn.modules.weight_only_quantization.WeightOnlyQuantizedLinear.from_weight(qweight, scales, qzeros, x.size(-1), out_shape[-1], qconfig=qconfig, bias=bias, group_size=self.quant_config.group_size, quant_method=1)
+            layer.ipex_initialized = True
+
+        out = layer.ipex_qlinear(reshaped_x)
+
         return out.reshape(out_shape)

@@ -124,9 +124,10 @@ class AWQMarlinConfig(QuantizationConfig):
         if num_bits not in cls.TYPE_MAP:
             return False
 
-        return check_marlin_supported(quant_type=cls.TYPE_MAP[num_bits],
-                                      group_size=group_size,
-                                      has_zp=has_zp)
+        return False
+        # return check_marlin_supported(quant_type=cls.TYPE_MAP[num_bits],
+        #                               group_size=group_size,
+        #                               has_zp=has_zp)
 
 
 class AWQMarlinLinearMethod(LinearMethodBase):
