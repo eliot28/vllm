@@ -14,10 +14,12 @@ COPY ./ /workspace/vllm
 WORKDIR /workspace/vllm
 
 # These packages will be in rocketce eventually
-RUN pip install -v -r requirements-build.txt -r requirements-cpu.txt --prefer-binary --extra-index-url https://repo.fury.io/mgiessing
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -v -r requirements-cpu.txt --prefer-binary --extra-index-url https://repo.fury.io/mgiessing
 
 RUN --mount=type=bind,source=.git,target=.git \
-    VLLM_TARGET_DEVICE=cpu python3 setup.py install
+    --mount=type=cache,target=/root/.cache/pip \
+    VLLM_TARGET_DEVICE=cpu pip install -v .
 
 WORKDIR /vllm-workspace
 ENTRYPOINT ["/opt/conda/bin/python3", "-m", "vllm.entrypoints.openai.api_server"]
