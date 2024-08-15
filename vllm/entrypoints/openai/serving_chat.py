@@ -213,12 +213,16 @@ class OpenAIServingChat(OpenAIServing):
 
         # Send response for each token for each request.n (index)
         num_choices = 1 if request.n is None else request.n
-        previous_texts = [""] * num_choices
         previous_num_tokens = [0] * num_choices
         finish_reason_sent = [False] * num_choices
 
+        num_prompt_tokens = 0
+
         try:
             async for res in result_generator:
+                if res.prompt_token_ids is not None:
+                    num_prompt_tokens = len(res.prompt_token_ids)
+
                 # We need to do it here, because if there are exceptions in
                 # the result_generator, it needs to be sent as the FIRST
                 # response (by the try...catch).
@@ -240,11 +244,11 @@ class OpenAIServingChat(OpenAIServing):
                             model=model_name)
                         if (request.stream_options
                                 and request.stream_options.include_usage):
-                            if (request.stream_options.continuous_usage_stats):
-                                prompt_tokens = len(res.prompt_token_ids)
-                                usage = UsageInfo(prompt_tokens=prompt_tokens,
-                                                  completion_tokens=0,
-                                                  total_tokens=prompt_tokens)
+                            if request.stream_options.continuous_usage_stats:
+                                usage = UsageInfo(
+                                    prompt_tokens=num_prompt_tokens,
+                                    completion_tokens=0,
+                                    total_tokens=num_prompt_tokens)
                                 chunk.usage = usage
                             else:
                                 chunk.usage = None
@@ -280,12 +284,10 @@ class OpenAIServingChat(OpenAIServing):
                                         request.stream_options.include_usage):
                                     if (request.stream_options.
                                             continuous_usage_stats):
-                                        prompt_tokens = len(
-                                            res.prompt_token_ids)
                                         usage = UsageInfo(
-                                            prompt_tokens=prompt_tokens,
+                                            prompt_tokens=num_prompt_tokens,
                                             completion_tokens=0,
-                                            total_tokens=prompt_tokens)
+                                            total_tokens=num_prompt_tokens)
                                         chunk.usage = usage
                                     else:
                                         chunk.usage = None
@@ -301,25 +303,20 @@ class OpenAIServingChat(OpenAIServing):
                     if finish_reason_sent[i]:
                         continue
 
-                    delta_token_ids = output.token_ids[previous_num_tokens[i]:]
-                    out_logprobs = output.logprobs[
-                        previous_num_tokens[i]:] if output.logprobs else None
-
                     if request.logprobs and request.top_logprobs is not None:
-                        assert out_logprobs is not None, (
+                        assert output.logprobs is not None, (
                             "Did not output logprobs")
                         logprobs = self._create_chat_logprobs(
-                            token_ids=delta_token_ids,
-                            top_logprobs=out_logprobs,
+                            token_ids=output.token_ids,
+                            top_logprobs=output.logprobs,
                             tokenizer=tokenizer,
                             num_output_top_logprobs=request.top_logprobs,
                         )
                     else:
                         logprobs = None
 
-                    delta_text = output.text[len(previous_texts[i]):]
-                    previous_texts[i] = output.text
-                    previous_num_tokens[i] = len(output.token_ids)
+                    delta_text = output.text
+                    previous_num_tokens[i] += len(output.token_ids)
 
                     if request.tool_choice and type(
                             request.tool_choice
@@ -348,13 +345,12 @@ class OpenAIServingChat(OpenAIServing):
                             model=model_name)
                         if (request.stream_options
                                 and request.stream_options.include_usage):
-                            if (request.stream_options.continuous_usage_stats):
-                                prompt_tokens = len(res.prompt_token_ids)
+                            if request.stream_options.continuous_usage_stats:
                                 completion_tokens = len(output.token_ids)
                                 usage = UsageInfo(
-                                    prompt_tokens=prompt_tokens,
+                                    prompt_tokens=num_prompt_tokens,
                                     completion_tokens=completion_tokens,
-                                    total_tokens=prompt_tokens +
+                                    total_tokens=num_prompt_tokens +
                                     completion_tokens,
                                 )
                                 chunk.usage = usage
@@ -365,7 +361,6 @@ class OpenAIServingChat(OpenAIServing):
                         yield f"data: {data}\n\n"
                     else:
                         # Send the finish response for each request.n only once
-                        prompt_tokens = len(res.prompt_token_ids)
                         choice_data = ChatCompletionResponseStreamChoice(
                             index=i,
                             delta=delta_message,
@@ -380,13 +375,12 @@ class OpenAIServingChat(OpenAIServing):
                             model=model_name)
                         if (request.stream_options
                                 and request.stream_options.include_usage):
-                            if (request.stream_options.continuous_usage_stats):
-                                prompt_tokens = len(res.prompt_token_ids)
+                            if request.stream_options.continuous_usage_stats:
                                 completion_tokens = len(output.token_ids)
                                 usage = UsageInfo(
-                                    prompt_tokens=prompt_tokens,
+                                    prompt_tokens=num_prompt_tokens,
                                     completion_tokens=completion_tokens,
-                                    total_tokens=prompt_tokens +
+                                    total_tokens=num_prompt_tokens +
                                     completion_tokens,
                                 )
                                 chunk.usage = usage
@@ -398,10 +392,11 @@ class OpenAIServingChat(OpenAIServing):
 
             if (request.stream_options
                     and request.stream_options.include_usage):
+                completion_tokens = previous_num_tokens[i]
                 final_usage = UsageInfo(
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=previous_num_tokens[i],
-                    total_tokens=prompt_tokens + previous_num_tokens[i],
+                    prompt_tokens=num_prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=num_prompt_tokens + completion_tokens,
                 )
 
                 final_usage_chunk = ChatCompletionStreamResponse(
