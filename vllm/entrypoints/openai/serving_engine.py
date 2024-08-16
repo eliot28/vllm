@@ -3,6 +3,7 @@ import pathlib
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Iterable, Iterator, List, Optional, Tuple, TypedDict, Union
+import os
 
 from pydantic import Field
 from typing_extensions import Annotated
@@ -169,6 +170,8 @@ class OpenAIServing:
             return None
         if request.model in [lora.lora_name for lora in self.lora_requests]:
             return None
+        elif request.lora_request and os.path.exists(request.lora_request.get("lora_local_path")):
+            return None
         if request.model in [
                 prompt_adapter.prompt_adapter_name
                 for prompt_adapter in self.prompt_adapter_requests
@@ -188,6 +191,13 @@ class OpenAIServing:
         for lora in self.lora_requests:
             if request.model == lora.lora_name:
                 return lora, None
+        if request.lora_request and os.path.exists(request.lora_request.get("lora_local_path")):
+            new_lora = LoRARequest(
+                lora_name=request.model,
+                lora_local_path=request.lora_request.get("lora_local_path")
+            )
+            self.lora_requests.append(new_lora)
+            return new_lora, None
         for prompt_adapter in self.prompt_adapter_requests:
             if request.model == prompt_adapter.prompt_adapter_name:
                 return None, prompt_adapter

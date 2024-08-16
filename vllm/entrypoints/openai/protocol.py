@@ -15,6 +15,7 @@ from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import LogitsProcessor, SamplingParams
 from vllm.sequence import Logprob
 from vllm.utils import random_uuid
+from vllm.lora.request import LoRARequest
 
 # torch is mocked during docs generation,
 # so we have to provide the values as literals
@@ -220,6 +221,8 @@ class ChatCompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    lora_request: Optional[dict] = Field(default_factory=dict)
+
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -233,6 +236,11 @@ class ChatCompletionRequest(OpenAIBaseModel):
             "for guided json decoding."))
 
     # doc: end-chat-completion-extra-params
+
+    def to_lora_params(self) -> Union[LoRARequest, None]:
+        if not self.lora_request:
+            return None
+        return LoRARequest(**self.lora_request)
 
     def to_sampling_params(
             self, tokenizer: PreTrainedTokenizer,
@@ -407,6 +415,7 @@ class CompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    lora_request: Optional[dict] = Field(default_factory=dict)
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -421,6 +430,11 @@ class CompletionRequest(OpenAIBaseModel):
 
     # doc: end-completion-extra-params
 
+    def to_lora_params(self) -> Union[LoRARequest, None]:
+        if not self.lora_request:
+            return None
+        return LoRARequest(**self.lora_request)
+
     def to_sampling_params(
             self, tokenizer: PreTrainedTokenizer,
             guided_decode_logits_processor: Optional[LogitsProcessor],
@@ -428,7 +442,6 @@ class CompletionRequest(OpenAIBaseModel):
         max_tokens = self.max_tokens
         if max_tokens is None:
             max_tokens = default_max_tokens
-
         echo_without_generation = self.echo and self.max_tokens == 0
 
         logits_processors = get_logits_processors(
