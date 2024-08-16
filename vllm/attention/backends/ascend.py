@@ -228,10 +228,13 @@ class AscendMetadata(AttentionMetadata):
 
 
 class AscendMetadataBuilder(
-        AttentionMetadataBuilder[AttentionMetadata]):
+        AttentionMetadataBuilder[AscendMetadata]):
 
     def __init__(self, input_builder: "ModelInputForNPUBuilder"):
-        self.slot_mapping: List[int] = []
+        # slot mapping: mapping of sequence offset to physical address
+        self.slot_mapping: List[List[int]] = []
+        self.slot_indices: List[List[List[int]]] = []
+
         self.prefill_seq_lens: List[int] = []
         self.context_lens: List[int] = []
         self.block_tables: List[List[int]] = []
@@ -245,8 +248,8 @@ class AscendMetadataBuilder(
         self.runner = input_builder.runner
         self.sliding_window = input_builder.sliding_window
         self.block_size = input_builder.block_size
-        self.use_v2_block_manager = (
-            input_builder.scheduler_config.use_v2_block_manager)
+        # use_v2_block_manager not supported in Ascend
+        self.use_v2_block_manager = False
 
     def _add_seq_group(
             self, inter_data: "ModelInputForNPUBuilder.InterDataForSeqGroup",
@@ -463,13 +466,13 @@ class AscendAttentionBackendImpl(AttentionImpl):
                                       "PallasAttentionBackendImpl")
         # batch_size, seq_len, _ = query.shape
         # batch_size = query.shape[0]
-        print(120*"%", query.shape, "\n", 120*"%", key.shape, "\n", 120*"%", value.shape)
 
         if kv_cache is not None:
             if attn_metadata.num_prefills > 0:
                 slot_mapping = attn_metadata.prefill_metadata.slot_mapping
             else:
                 slot_mapping = attn_metadata.decode_metadata.slot_mapping
+            print(150*"-", "\n", "kv_cache.shape: ", kv_cache.shape, "\n", 150*"-")
             key_cache, value_cache = kv_cache
             AscendPagedAttention.write_to_paged_cache(key, value, key_cache, value_cache, 
                                                       slot_mapping, self.kv_cache_dtype, kv_scale)
@@ -515,7 +518,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
             query = query.view(-1, attn_metadata.max_seq_len, self.num_heads, self.head_size).transpose(1,2)
             key = key.view(-1, attn_metadata.max_seq_len, self.num_kv_heads, self.head_size).transpose(1,2)
             value = value.view(-1, attn_metadata.max_seq_len, self.num_kv_heads, self.head_size).transpose(1,2)
-            # print("attn_metadata.attn_mask.shape: ", attn_metadata.attn_mask.shape)
             # 全量 FA
             output = torch_npu.npu_prompt_flash_attention(
                         query, key, value,
@@ -530,7 +532,10 @@ class AscendAttentionBackendImpl(AttentionImpl):
                         sparse_mode=attn_metadata.sparse_mode
                     )
             output = output.transpose(1,2).reshape(batch_size, -1, self.num_heads * self.head_size)
-        else:
+            if output.shape[1] == 1:
+                output = output.squeeze(1)
+            print("output.shape", output.shape)
+        elif decode_meta := attn_metadata.decode_metadata:
             # Decoding run.
             # 增量 FA
             assert kv_cache is not None
@@ -575,6 +580,9 @@ class AscendAttentionBackendImpl(AttentionImpl):
 
 
 def gen_input_mask(batch_size, seq_len, query_len: torch.LongTensor, kv_len: torch.LongTensor):
+    '''
+    Generating lower triangular matrix
+    '''
     global SHARE_MASK_TRIL
     if SHARE_MASK_TRIL is None or SHARE_MASK_TRIL.shape[0] < seq_len:
         SHARE_MASK_TRIL = ~ torch.tril(torch.ones(seq_len, seq_len, dtype=bool, device="npu"))
@@ -591,7 +599,8 @@ def gen_input_mask(batch_size, seq_len, query_len: torch.LongTensor, kv_len: tor
     attn_mask = attn_mask.masked_fill(padding_idx, 1)
     q_len = attn_mask.shape[1]
     attn_mask = attn_mask[:, :, :q_len]
-    return attn_mask.unsqueeze(1)
+    # final attn_mask shape: [1, 1, query_seq_len, kv_seq_len]
+    return attn_mask.unsqueeze(1)[0].unsqueeze(0)
 
 
 def _make_alibi_bias(
