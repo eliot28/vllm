@@ -52,6 +52,7 @@ from vllm.version import __version__ as VLLM_VERSION
 
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
+_DEFAULT_BOS_TOKEN_ID = 1
 
 
 def _load_generation_config_dict(model_config: ModelConfig) -> Dict[str, Any]:
@@ -278,8 +279,7 @@ class LLMEngine:
             observability_config=self.observability_config,
         )
 
-        if not self.model_config.embedding_mode:
-            self._initialize_kv_caches()
+        self._initialize_kv_caches()
 
         # If usage stat is enabled, collect relevant info.
         if is_usage_stats_enabled():
@@ -532,7 +532,13 @@ class LLMEngine:
                            "is not initialized")
             return None
 
-        return self.tokenizer.get_lora_tokenizer(lora_request).bos_token_id
+        bos_token_id = self.tokenizer.get_lora_tokenizer(
+            lora_request).bos_token_id
+
+        if bos_token_id is None and self.is_encoder_model():
+            bos_token_id = _DEFAULT_BOS_TOKEN_ID
+
+        return bos_token_id
 
     def _get_eos_token_id(self,
                           lora_request: Optional[LoRARequest] = None
@@ -564,8 +570,10 @@ class LLMEngine:
         dec_start_token_id = getattr(self.model_config.hf_config,
                                      'decoder_start_token_id', None)
         if dec_start_token_id is None:
-            logger.warning("Falling back on <BOS> for decoder start token id "
-                           "because decoder start token id is not available.")
+            if not self.is_encoder_model():
+                logger.warning(
+                    "Falling back on <BOS> for decoder start token id "
+                    "because decoder start token id is not available.")
             dec_start_token_id = self._get_bos_token_id()
 
         return dec_start_token_id
@@ -1618,6 +1626,9 @@ class LLMEngine:
 
     def is_encoder_decoder_model(self):
         return self.model_config.is_encoder_decoder_model
+
+    def is_encoder_model(self):
+        return self.model_config.is_encoder_model
 
     def is_embedding_model(self):
         return self.model_config.is_embedding_model
