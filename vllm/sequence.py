@@ -166,8 +166,8 @@ class SequenceData(msgspec.Struct,
     _new_appended_tokens: List[int] = msgspec.field(default_factory=list)
 
     def __post_init__(self) -> None:
-        assert self._prompt_token_ids.typecode == "l"
-        assert self._output_token_ids.typecode == "l"
+        assert self._prompt_token_ids.typecode == VLLM_TOKEN_ID_ARRAY_TYPE
+        assert self._output_token_ids.typecode == VLLM_TOKEN_ID_ARRAY_TYPE
         self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(
             self._prompt_token_ids)
         self._update_cached_all_tokens()
@@ -1235,6 +1235,9 @@ class ExecuteModelRequest(
     # The number of requests in the running queue.
     running_queue_size: int = 0
     # Optional hidden states from prior step.
+    # NOTE: It should not be passed from scheduler -> worker. It is only
+    # used when ExecuteModelRequest is constructed within a worker
+    # for spec decoding.
     previous_hidden_states: Optional[HiddenStates] = None
     # The number of forward steps to run.
     num_steps: int = 1
