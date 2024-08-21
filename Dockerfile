@@ -68,7 +68,7 @@ ARG PYTHON_VERSION=3.10
 COPY requirements-build.txt requirements-build.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install -r requirements-build.txt
+    python3 -m pip install build -r requirements-build.txt
 
 # install compiler cache to speed up compilation leveraging local or remote caching
 RUN apt-get update -y && apt-get install -y ccache
@@ -91,12 +91,10 @@ ENV MAX_JOBS=${max_jobs}
 ARG nvcc_threads=8
 ENV NVCC_THREADS=$nvcc_threads
 
-ARG buildkite_commit
-ENV BUILDKITE_COMMIT=${buildkite_commit}
-
 ARG USE_SCCACHE
 # if USE_SCCACHE is set, use sccache to speed up compilation
 RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=.git,target=.git \
     if [ "$USE_SCCACHE" = "1" ]; then \
         echo "Installing sccache..." \
         && curl -L -o sccache.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
@@ -111,15 +109,16 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         && export SCCACHE_REGION=us-west-2 \
         && export CMAKE_BUILD_TYPE=Release \
         && sccache --show-stats \
-        && python3 setup.py bdist_wheel --dist-dir=dist --py-limited-api=cp38 \
+        && python3 python3 -m build --wheel --outdir=dist --no-isolation -v -config-setting py-limited-api=38  \
         && sccache --show-stats; \
     fi
 
 ENV CCACHE_DIR=/root/.cache/ccache
 RUN --mount=type=cache,target=/root/.cache/ccache \
     --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=.git,target=.git  \
     if [ "$USE_SCCACHE" != "1" ]; then \
-        python3 setup.py bdist_wheel --dist-dir=dist --py-limited-api=cp38; \
+        python -m build --wheel --outdir=dist --no-isolation --config-setting py-limited-api=38 -v ;\
     fi
 
 # check the size of the wheel, we cannot upload wheels larger than 100MB
