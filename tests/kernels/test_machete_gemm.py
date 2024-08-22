@@ -32,14 +32,16 @@ MNK_SHAPES = [
     (64, 4096, 4096),
 ]
 
-ACT_TYPES = [torch.float16, torch.bfloat16]
-WTYPE_ZEROPOINTS = [
+ACT_TYPES = [torch.int8] # torch.float16, torch.bfloat16, 
+ATYPE_WTYPE_ZEROPOINTS = [
     # GPTQ style
-    (scalar_types.uint4b8, False),
-    (scalar_types.uint8b128, False),
+    ([torch.float16, torch.bfloat16], scalar_types.uint4b8, False),
+    ([torch.float16, torch.bfloat16], scalar_types.uint8b128, False),
     # AWQ style
-    (scalar_types.uint4, True),
-    (scalar_types.uint8, True),
+    ([torch.float16, torch.bfloat16], scalar_types.uint4, True),
+    ([torch.float16, torch.bfloat16], scalar_types.uint8, True),
+    # QQQ style
+    ([torch.int8], scalar_types.uint4, True),
 ]
 
 # TODO: in future PR refactor this and `is_quant_method_supported` in the kernel
@@ -51,7 +53,7 @@ IS_SUPPORTED_BY_GPU = current_platform.get_device_capability()[0] >= 9
 
 
 def rand_data(shape, dtype=torch.float16):
-    return 10 * (torch.rand(shape, dtype=dtype, device="cuda") - 0.3)
+    return 10 * (torch.rand(shape, device="cuda") - 0.3).to(dtype)
 
 
 def maybe_convert_zeropoints(zps: Optional[torch.Tensor], s: torch.Tensor):
@@ -65,7 +67,7 @@ def machete_quantize_and_pack(w: torch.Tensor,
     assert wtype.is_integer(), "TODO: support floating point weights"
 
     w_ref, w_q, w_s, w_zp = quantize_weights(
-        w,
+        w.to(torch.float32),
         wtype,
         group_size,
         zero_points=zero_points,
@@ -74,9 +76,9 @@ def machete_quantize_and_pack(w: torch.Tensor,
 
     w_q = pack_rows(w_q, wtype.size_bits, *w_q.shape)
     w_q = w_q.t().contiguous().t()  # convert to col major
-    w_q_machete = ops.machete_prepack_B(w_q, wtype)
+    w_q_machete = ops.machete_prepack_B(w_q, w.dtype, wtype)
 
-    return w_ref, w_q_machete, w_s, w_zp
+    return w_ref.to(w.dtype), w_q_machete, w_s, w_zp
 
 
 def machete_gemm_test_helper(a: torch.Tensor, b: torch.Tensor,
@@ -85,7 +87,12 @@ def machete_gemm_test_helper(a: torch.Tensor, b: torch.Tensor,
     w_ref, w_q_packed, w_s, w_zp = machete_quantize_and_pack(
         b, wtype, group_size, zero_points)
 
-    output_ref = torch.matmul(a, w_ref)
+    a_ref = a
+    if not a.dtype.is_floating_point:
+        a_ref = a.to(torch.float32)
+        w_ref = w_ref.to(torch.float32)
+
+    output_ref = torch.matmul(a_ref, w_ref)
 
     output = ops.machete_gemm(
         a=a,
@@ -133,7 +140,12 @@ def test_machete_all_schedules(shape, atype: torch.dtype,
     w_ref, w_q_machete, w_s, w_zp = machete_quantize_and_pack(
         w, wtype, group_size, zero_points)
 
-    output_ref = torch.matmul(a, w_ref)
+    a_ref = a
+    if not atype.is_floating_point:
+        a_ref = a.to(torch.float32)
+        w_ref = w_ref.to(torch.float32)
+
+    output_ref = torch.matmul(a_ref, w_ref)
 
     for schedule in ops.machete_supported_schedules(wtype):
         output = ops.machete_gemm(
