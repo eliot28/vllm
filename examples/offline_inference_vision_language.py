@@ -263,7 +263,7 @@ if __name__ == "__main__":
     parser.add_argument('--model-type',
                         '-m',
                         type=str,
-                        default="llava-next-video",
+                        default="llava",
                         choices=model_example_map.keys(),
                         help='Huggingface "model_type".')
     parser.add_argument('--num-prompts',
@@ -272,7 +272,7 @@ if __name__ == "__main__":
                         help='Number of prompts to run.')
     parser.add_argument('--modality',
                         type=str,
-                        default="video",
+                        default="image",
                         help='Modality of the input.')
     parser.add_argument('--num-frames',
                         type=int,
