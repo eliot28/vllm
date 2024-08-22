@@ -13,10 +13,11 @@ logger = init_logger(__name__)
 class NPUExecutor(GPUExecutor):
 
     def _init_executor(self) -> None:
+        # TODO: 这两个参数作用
         assert not self.scheduler_config.chunked_prefill_enabled, (
-            "Chunked prefill is not yet supported for TPU backend")
+            "Chunked prefill is not yet supported for NPU backend")
         assert not self.speculative_config, (
-            "Speculative decoding is not yet supported for TPU backend")
+            "Speculative decoding is not yet supported for NPU backend")
 
         # Instantiate the worker and load the model to the device.
         self.driver_worker = self._create_worker()

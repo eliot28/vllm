@@ -12,16 +12,11 @@ import torch
 import torch.distributed
 import torch.nn as nn
 
-try:
-    from flashinfer import BatchDecodeWithPagedKVCacheWrapper
-    from flashinfer.decode import CUDAGraphBatchDecodeWithPagedKVCacheWrapper
-    from flashinfer.prefill import BatchPrefillWithPagedKVCacheWrapper
-    FLASHINFER_WORKSPACE_BUFFER_SIZE = 256 * 1024 * 1024
-except ImportError:
-    BatchDecodeWithPagedKVCacheWrapper = None
-    CUDAGraphBatchDecodeWithPagedKVCacheWrapper = None
-    BatchPrefillWithPagedKVCacheWrapper = None
-    FLASHINFER_WORKSPACE_BUFFER_SIZE = 0
+
+BatchDecodeWithPagedKVCacheWrapper = None
+CUDAGraphBatchDecodeWithPagedKVCacheWrapper = None
+BatchPrefillWithPagedKVCacheWrapper = None
+FLASHINFER_WORKSPACE_BUFFER_SIZE = 0
 
 import vllm.envs as envs
 from vllm.attention import AttentionMetadata, get_attn_backend
@@ -37,6 +32,8 @@ from vllm.lora.request import LoRARequest
 from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
 from vllm.model_executor import SamplingMetadata
 from vllm.model_executor.model_loader import get_model
+from vllm.model_executor.model_loader.ascend_mindie import (
+    get_mindie_model, model_supports_in_mindie)
 from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
 from vllm.model_executor.models.interfaces import (supports_lora,
                                                    supports_vision)
@@ -52,7 +49,7 @@ from vllm.sequence import (IntermediateTensors, SamplerOutput,
                            SequenceGroupMetadata)
 from vllm.utils import (DeviceMemoryProfiler, flatten_2d_lists,
                         get_kv_cache_torch_dtype, is_hip,
-                        is_pin_memory_available)
+                        is_pin_memory_available, is_mindie, is_npu)
 from vllm.worker.model_runner_base import (
     ModelRunnerBase, ModelRunnerInputBase, ModelRunnerInputBuilderBase,
     _add_attn_metadata_broadcastable_dict,
@@ -625,6 +622,7 @@ class ModelInputForNPUBuilder(ModelRunnerInputBuilderBase[ModelInputForNPU]):
             prompt_adapter_mapping=prompt_adapter_mapping,
             prompt_adapter_requests=prompt_adapter_requests)
 
+
 ####TODO: 直接继承GPURUNNER相关类
 class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
     """
@@ -642,6 +640,7 @@ class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
         cache_config: CacheConfig,
         load_config: LoadConfig,
         lora_config: Optional[LoRAConfig],
+        mindie_model_config: Optional[dict],
         kv_cache_dtype: Optional[str] = "auto",
         is_driver_worker: bool = False,
         prompt_adapter_config: Optional[PromptAdapterConfig] = None,
@@ -655,6 +654,7 @@ class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
         self.cache_config = cache_config
         self.lora_config = lora_config
         self.load_config = load_config
+        self.mindie_model_config = mindie_model_config
         self.is_driver_worker = is_driver_worker
         self.prompt_adapter_config = prompt_adapter_config
         self.multimodal_config = multimodal_config
@@ -689,6 +689,7 @@ class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
             dtype=np.int32)
         num_attn_heads = self.model_config.get_num_attention_heads(
             self.parallel_config)
+        # TODO: 增加ATB不支持模型的处理逻辑
         self.attn_backend = get_attn_backend(
             num_attn_heads,
             self.model_config.get_head_size(),
@@ -717,7 +718,20 @@ class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
         set_cpu_offload_max_bytes(
             int(self.cache_config.cpu_offload_gb * 1024**3))
 
+    def model_router(self) -> None:
+        # TODO: model_support_in_mindie, get_mindie_model
+        if is_mindie and model_supports_in_mindie(self.model_config):
+            self.model = get_mindie_model(self.model_config,
+                                          self.device_config,
+                                          self.load_config,
+                                          self.mindie_model_config)
+        else:
+            self.get_vllm_model()
+
     def load_model(self) -> None:
+        self.model_router()
+
+    def get_vllm_model(self) -> None:
         logger.info("Starting to load model %s...", self.model_config.model)
         with DeviceMemoryProfiler() as m:
             self.model = get_model(model_config=self.model_config,
@@ -1136,6 +1150,7 @@ class NPUModelRunner(NPUModelRunnerBase[ModelInputForNPUWithSamplingMetadata]):
 
             output.hidden_states = hidden_states
 
+        # TODO: return output?
         return [output]
 
 

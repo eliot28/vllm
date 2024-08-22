@@ -88,6 +88,14 @@ class NPUWorker(LocalOrDistributedWorkerBase):
             ModelRunnerClass = model_runner_cls
         elif self.model_config.embedding_mode:
             ModelRunnerClass = EmbeddingModelRunner
+        mindie_model_config = {
+            "backend_type": "atb",
+            "model_id": model_config.model,
+            "rank": rank,
+            "local_rank": local_rank,
+            "world_size": parallel_config.world_size,
+            "npu_device_id": local_rank,
+        }
         self.model_runner: NPUModelRunnerBase = ModelRunnerClass(
             model_config,
             parallel_config,
@@ -96,6 +104,7 @@ class NPUWorker(LocalOrDistributedWorkerBase):
             cache_config,
             load_config=load_config,
             lora_config=self.lora_config,
+            mindie_model_config=mindie_model_config,
             kv_cache_dtype=self.cache_config.cache_dtype,
             is_driver_worker=is_driver_worker,
             prompt_adapter_config=prompt_adapter_config,

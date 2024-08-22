@@ -246,6 +246,12 @@ def is_npu() -> bool:
 
 
 @lru_cache(maxsize=None)
+def is_mindie() -> bool:
+    # TODO
+    return False
+
+
+@lru_cache(maxsize=None)
 def get_max_shared_memory_bytes(gpu: int = 0) -> int:
     """Returns the maximum shared memory per thread block in bytes."""
     max_shared_mem = (
