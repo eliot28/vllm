@@ -107,11 +107,12 @@ def get_tokenizer(
             revision=revision,
             **kwargs)
     except ValueError as e:
-        # If the error pertains to the tokenizer class not existing or not
-        # currently being imported, suggest using the --trust-remote-code flag.
         if (not trust_remote_code and
             ("does not exist or is not currently imported." in str(e)
              or "requires you to execute the tokenizer file" in str(e))):
+            # If the error pertains to the tokenizer class not existing
+            # or not currently being imported, suggest using the
+            # --trust-remote-code flag.
             err_msg = (
                 "Failed to load the tokenizer. If the tokenizer is a custom "
                 "tokenizer not yet available in the HuggingFace transformers "
