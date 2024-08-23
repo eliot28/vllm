@@ -950,6 +950,9 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                                        fullgraph=True,
                                        backend="eager")
 
+    def share_model(self, model: nn.Module) -> None:
+        self.model = model
+
     def save_sharded_state(
         self,
         path: str,

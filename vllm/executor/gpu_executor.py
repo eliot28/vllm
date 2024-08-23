@@ -60,6 +60,7 @@ class GPUExecutor(ExecutorBase):
             lora_config=self.lora_config,
             speculative_config=self.speculative_config,
             prompt_adapter_config=self.prompt_adapter_config,
+            classifier_free_guidance_config=self.classifier_free_guidance_config,
             is_driver_worker=(not self.parallel_config)
             or (rank % self.parallel_config.tensor_parallel_size == 0),
             observability_config=self.observability_config,
@@ -74,6 +75,9 @@ class GPUExecutor(ExecutorBase):
         elif self.speculative_config:
             worker_module_name = "vllm.spec_decode.spec_decode_worker"
             worker_class_name = "create_spec_worker"
+        elif self.classifier_free_guidance_config:
+            worker_module_name = "vllm.classifier_free_guidance.cfg_worker"
+            worker_class_name = "create_cfg_worker"
         else:
             worker_module_name = "vllm.worker.worker"
             worker_class_name = "Worker"

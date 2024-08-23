@@ -12,7 +12,7 @@ from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          EngineConfig, LoadConfig, LoadFormat, LoRAConfig,
                          ModelConfig, ObservabilityConfig, ParallelConfig,
                          PromptAdapterConfig, SchedulerConfig,
-                         SpeculativeConfig, TokenizerPoolConfig)
+                         SpeculativeConfig, TokenizerPoolConfig, ClassifierFreeGuidanceConfig)
 from vllm.executor.executor_base import ExecutorBase
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
@@ -147,6 +147,9 @@ class EngineArgs:
 
     otlp_traces_endpoint: Optional[str] = None
     collect_detailed_traces: Optional[str] = None
+
+    # classifier free guidance configuration
+    classifier_free_guidance_model: Optional[str] = None
 
     def __post_init__(self):
         if self.tokenizer is None:
@@ -732,6 +735,13 @@ class EngineArgs:
             "modules. This involves use of possibly costly and or blocking "
             "operations and hence might have a performance impact.")
 
+        parser.add_argument(
+            '--classifier-free-guidance-model',
+            type=nullable_str,
+            default=EngineArgs.classifier_free_guidance_model,
+            help=
+            'The name of the model to be used in classifier free guidance logistor.')
+
         return parser
 
     @classmethod
@@ -901,6 +911,12 @@ class EngineArgs:
             if speculative_config is None \
             else speculative_config.num_lookahead_slots
 
+        classifier_free_guidance_config = ClassifierFreeGuidanceConfig.maybe_create_spec_config(
+            target_model_config=model_config,
+            target_parallel_config=parallel_config,
+            guidance_model=self.classifier_free_guidance_model,
+        )
+
         scheduler_config = SchedulerConfig(
             max_num_batched_tokens=self.max_num_batched_tokens,
             max_num_seqs=self.max_num_seqs,
@@ -982,6 +998,7 @@ class EngineArgs:
             decoding_config=decoding_config,
             observability_config=observability_config,
             prompt_adapter_config=prompt_adapter_config,
+            classifier_free_guidance_config=classifier_free_guidance_config,
         )
 
 

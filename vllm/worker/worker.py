@@ -10,7 +10,7 @@ import vllm.envs as envs
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, ObservabilityConfig, ParallelConfig,
                          PromptAdapterConfig, SchedulerConfig,
-                         SpeculativeConfig)
+                         SpeculativeConfig, ClassifierFreeGuidanceConfig)
 from vllm.distributed import (ensure_model_parallel_initialized,
                               init_distributed_environment,
                               set_custom_all_reduce)
@@ -54,6 +54,7 @@ class Worker(LocalOrDistributedWorkerBase):
         lora_config: Optional[LoRAConfig] = None,
         speculative_config: Optional[SpeculativeConfig] = None,
         prompt_adapter_config: Optional[PromptAdapterConfig] = None,
+        classifier_free_guidance_config: Optional[ClassifierFreeGuidanceConfig] = None,
         is_driver_worker: bool = False,
         model_runner_cls: Optional[Type[GPUModelRunnerBase]] = None,
         observability_config: Optional[ObservabilityConfig] = None,
@@ -180,6 +181,9 @@ class Worker(LocalOrDistributedWorkerBase):
 
     def load_model(self):
         self.model_runner.load_model()
+
+    def share_model(self, shared_worker) -> None:
+        self.model_runner.share_model(shared_worker.model_runner.model)
 
     def save_sharded_state(
         self,
