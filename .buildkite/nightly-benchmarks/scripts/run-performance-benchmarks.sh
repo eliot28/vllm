@@ -17,7 +17,7 @@ check_gpus() {
     echo "Need at least 1 GPU to run benchmarking."
     exit 1
   fi
-  declare -g gpu_type=$(echo $(nvidia-smi --query-gpu=name --format=csv,noheader) | awk '{print $2}')
+  declare -g gpu_type=$(echo "$(nvidia-smi --query-gpu=name --format=csv,noheader)" | awk '{print $2}')
   echo "GPU type is $gpu_type"
 }
 
@@ -93,7 +93,7 @@ kill_gpu_processes() {
 
 
   # wait until GPU memory usage smaller than 1GB
-  while [ $(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -n 1) -ge 1000 ]; do
+  while [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -n 1)" -ge 1000 ]; do
     sleep 1
   done
 
@@ -206,7 +206,7 @@ run_throughput_tests() {
     throughput_args=$(json2args "$throughput_params")
 
     # check if there is enough GPU to run the test
-    tp=$(echo $throughput_params | jq -r '.tensor_parallel_size')
+    tp=$(echo "$throughput_params" | jq -r '.tensor_parallel_size')
     if [[ $gpu_count -lt $tp ]]; then
       echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $testname."
       continue

@@ -18,7 +18,7 @@ main() {
     description="$VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/nightly-descriptions.md"
 
     # download results
-    cd $VLLM_SOURCE_CODE_LOC/benchmarks
+    cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
     mkdir -p results/
     /workspace/buildkite-agent artifact download 'results/*nightly_results.json' results/
     ls
@@ -26,14 +26,14 @@ main() {
 
     # generate figures
     python3 -m pip install tabulate pandas matplotlib
-    python3 $VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/scripts/plot-nightly-results.py \
-        --description $description \
+    python3 "$VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/scripts/plot-nightly-results.py" \
+        --description "$description" \
         --results-folder results/
     
     # upload results and figures
     /workspace/buildkite-agent artifact upload "nightly_results.png"
-    /workspace/buildkite-agent artifact upload $VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/nightly-pipeline.yaml
-    /workspace/buildkite-agent artifact upload $VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/tests/nightly-tests.json
+    /workspace/buildkite-agent artifact upload "$VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/nightly-pipeline.yaml"
+    /workspace/buildkite-agent artifact upload "$VLLM_SOURCE_CODE_LOC/.buildkite/nightly-benchmarks/tests/nightly-tests.json"
     /workspace/buildkite-agent annotate --style "success" --context "nightly-benchmarks-results" --append < nightly_results.md
 }
 

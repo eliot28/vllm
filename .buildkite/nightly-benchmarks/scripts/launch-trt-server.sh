@@ -44,13 +44,13 @@ rm -rf tensorrtllm_backend
 git clone https://github.com/triton-inference-server/tensorrtllm_backend.git
 git lfs install
 cd tensorrtllm_backend
-git checkout $trt_llm_version
+git checkout "$trt_llm_version"
 tensorrtllm_backend_dir=$(pwd)
 git submodule update --init --recursive
-cp -r ${tensorrt_demo_dir}/triton_model_repo ${tensorrtllm_backend_dir}/
+cp -r "${tensorrt_demo_dir}/triton_model_repo" "${tensorrtllm_backend_dir}/"
 
 cd /tensorrtllm_backend
-cd ./tensorrt_llm/examples/${model_type}
+cd "./tensorrt_llm/examples/${model_type}"
 
 
 if echo "$common_params" | jq -e 'has("fp8")' > /dev/null; then
@@ -58,10 +58,10 @@ if echo "$common_params" | jq -e 'has("fp8")' > /dev/null; then
     echo "Key 'fp8' exists in common params. Use quantize.py instead of convert_checkpoint.py"
     echo "Reference: https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/llama/README.md"
     python ../quantization/quantize.py \
-        --model_dir ${model_path} \
-        --dtype ${model_dtype} \
-        --tp_size ${model_tp_size} \
-        --output_dir ${trt_model_path} \
+        --model_dir "${model_path}" \
+        --dtype "${model_dtype}" \
+        --tp_size "${model_tp_size}" \
+        --output_dir "${trt_model_path}" \
         --qformat fp8 \
         --kv_cache_dtype fp8 \
         --calib_size 2
@@ -70,33 +70,33 @@ else
 
     echo "Key 'fp8' does not exist in common params. Use convert_checkpoint.py"
     python3 convert_checkpoint.py \
-        --model_dir ${model_path} \
-        --dtype ${model_dtype} \
-        --tp_size ${model_tp_size} \
-        --output_dir ${trt_model_path}
+        --model_dir "${model_path}" \
+        --dtype "${model_dtype}" \
+        --tp_size "${model_tp_size}" \
+        --output_dir "${trt_model_path}"
 
 fi
 
 
 
 trtllm-build \
---checkpoint_dir=${trt_model_path} \
---gpt_attention_plugin=${model_dtype} \
---gemm_plugin=${model_dtype} \
+--checkpoint_dir="${trt_model_path}" \
+--gpt_attention_plugin="${model_dtype}" \
+--gemm_plugin="${model_dtype}" \
 --remove_input_padding=enable \
 --paged_kv_cache=enable \
---tp_size=${model_tp_size} \
---max_batch_size=${max_batch_size} \
---max_input_len=${max_input_len} \
---max_output_len=${max_output_len} \
---max_num_tokens=${max_output_len} \
---opt_num_tokens=${max_output_len} \
---output_dir=${trt_engine_path} 
+--tp_size="${model_tp_size}" \
+--max_batch_size="${max_batch_size}" \
+--max_input_len="${max_input_len}" \
+--max_output_len="${max_output_len}" \
+--max_num_tokens="${max_output_len}" \
+--opt_num_tokens="${max_output_len}" \
+--output_dir="${trt_engine_path}"
 
 cd /tensorrtllm_backend/triton_model_repo
 rm -rf ./tensorrt_llm/1/*
-cp -r ${trt_engine_path}/* ./tensorrt_llm/1
+cp -r "${trt_engine_path}/*" ./tensorrt_llm/1
 cd /tensorrtllm_backend
 python3 scripts/launch_triton_server.py \
---world_size=${model_tp_size} \
+--world_size="${model_tp_size}" \
 --model_repo=/tensorrtllm_backend/triton_model_repo &

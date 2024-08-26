@@ -12,7 +12,7 @@ check_gpus() {
         echo "Need at least 1 GPU to run benchmarking."
         exit 1
     fi
-    declare -g gpu_type=$(echo $(nvidia-smi --query-gpu=name --format=csv,noheader) | awk '{print $2}')
+    declare -g gpu_type=$(echo "$(nvidia-smi --query-gpu=name --format=csv,noheader)" | awk '{print $2}')
     echo "GPU type is $gpu_type"
 }
 
@@ -39,7 +39,7 @@ main() {
     (which wget && which curl) || (apt-get update && apt-get install -y wget curl)
     (which jq) || (apt-get update && apt-get -y install jq)
 
-    cd $VLLM_SOURCE_CODE_LOC/benchmarks
+    cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
     wget https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json
     
 

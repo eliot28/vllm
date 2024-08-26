@@ -11,7 +11,7 @@ check_gpus() {
     echo "Need at least 1 GPU to run benchmarking."
     exit 1
   fi
-  declare -g gpu_type=$(echo $(nvidia-smi --query-gpu=name --format=csv,noheader) | awk '{print $2}')
+  declare -g gpu_type=$(echo "$(nvidia-smi --query-gpu=name --format=csv,noheader)" | awk '{print $2}')
   echo "GPU type is $gpu_type"
 }
 
@@ -204,7 +204,7 @@ main() {
 
   check_gpus
   # enter vllm directory
-  cd $VLLM_SOURCE_CODE_LOC/benchmarks
+  cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
   declare -g RESULTS_FOLDER=results/
   mkdir -p $RESULTS_FOLDER
   BENCHMARK_ROOT=../.buildkite/nightly-benchmarks/
