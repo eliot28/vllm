@@ -30,7 +30,7 @@ CLANGFORMAT_VERSION=$(clang-format --version | awk '{print $3}')
 
 # # params: tool name, tool version, required version
 tool_version_check() {
-    if [[ $2 != $3 ]]; then
+    if [[ "$2" != "$3" ]]; then
         echo "Wrong $1 version installed: $3 is required, not $2."
         exit 1
     fi
