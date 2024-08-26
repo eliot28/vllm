@@ -10,7 +10,7 @@ jobs:
     if: github.event.issue.pull_request && contains(github.event.comment.body, '/notready')
     steps:
         -   name: Remove ready label
-            uses: actions/github-script@v5
+            uses: actions/github-script@v6
             with:
                 script: |
                     github.rest.issues.removeLabel({
