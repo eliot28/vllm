@@ -355,12 +355,13 @@ def machete_gemm(
     b_scales: Optional[torch.Tensor] = None,
     b_zeros: Optional[torch.Tensor] = None,
     b_group_size: Optional[int] = None,
+    out_type: Optional[torch.dtype] = None,
     c: Optional[torch.Tensor] = None,
     alpha: Optional[float] = None,
     beta: Optional[float] = None,
     schedule: Optional[str] = None,
 ) -> torch.Tensor:
-    return torch.ops._C.machete_gemm(a, b_q, b_type, b_scales, b_zeros,
+    return torch.ops._C.machete_gemm(a, b_q, b_type, out_type, b_scales, b_zeros,
                                      b_group_size, c, alpha, beta, schedule)
 
 

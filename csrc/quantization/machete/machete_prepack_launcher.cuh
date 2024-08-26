@@ -54,7 +54,7 @@ torch::Tensor prepack_impl(torch::Tensor const B) {
   // clang-format on
 
   // Allocate output
-  torch::Tensor D = torch::empty_like(B);
+  torch::Tensor D = torch::empty_like(B).contiguous();
 
   prepack_B<PrepackedLayoutB>(stream, B_ptr, layout_Bt,
                               static_cast<ElementB*>(D.mutable_data_ptr()));
