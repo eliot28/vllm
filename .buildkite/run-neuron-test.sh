@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script build the Neuron docker image and run the API server inside the container.
 # It serves a sanity check for compilation and basic model usage.
 set -e

@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script runs test inside the corresponding ROCm docker container.
 set -ex
 
