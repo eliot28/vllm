@@ -150,7 +150,7 @@ run_latency_tests() {
     # check if there is enough GPU to run the test
     tp=$(echo "$latency_params" | jq -r '.tensor_parallel_size')
     if [[ $gpu_count -lt $tp ]]; then
-      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $testname."
+      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $test_name."
       continue
     fi
 
@@ -208,7 +208,7 @@ run_throughput_tests() {
     # check if there is enough GPU to run the test
     tp=$(echo "$throughput_params" | jq -r '.tensor_parallel_size')
     if [[ $gpu_count -lt $tp ]]; then
-      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $testname."
+      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $test_name."
       continue
     fi
 
@@ -270,7 +270,7 @@ run_serving_tests() {
     # check if there is enough GPU to run the test
     tp=$(echo "$server_params" | jq -r '.tensor_parallel_size')
     if [[ $gpu_count -lt $tp ]]; then
-      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $testname."
+      echo "Required tensor-parallel-size $tp but only $gpu_count GPU found. Skip testcase $test_name."
       continue
     fi
 
@@ -278,7 +278,7 @@ run_serving_tests() {
     server_model=$(echo "$server_params" | jq -r '.model')
     client_model=$(echo "$client_params" | jq -r '.model')
     if [[ $server_model != "$client_model" ]]; then
-      echo "Server model and client model must be the same. Skip testcase $testname."
+      echo "Server model and client model must be the same. Skip testcase $test_name."
       continue
     fi
 
