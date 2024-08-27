@@ -290,12 +290,13 @@ echo 'vLLM clang-format: Done'
 echo 'vLLM actionlint:'
 
 DOCKER=""
+ACTIONLINT_IMAGE="vllm/actionlint:latest"
 if command -v "docker" &>/dev/null; then
     DOCKER="docker"
 elif command -v "podman" &>/dev/null; then
     DOCKER="podman"
 else
-    echo "Docker or Podman are not installed. Please install one if you want to lint GitHub CI configuration."
+    echo "Docker or Podman are not installed. Please install one if you want to lint GitHub CI configuration and shell scripts."
 fi
 
 actionlint() {
@@ -303,13 +304,24 @@ actionlint() {
         return
     fi
     # Ensure we use the same version of actionlint as CI
-    IMAGE="vllm/actionlint:latest"
-    ${DOCKER} build --tag "${IMAGE}" - < .github/workflows/actionlint.dockerfile
-    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo "${IMAGE}" -color
+    ${DOCKER} build --tag "${ACTIONLINT_IMAGE}" - < .github/workflows/actionlint.dockerfile
+    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo "${ACTIONLINT_IMAGE}" -color
 }
 
 actionlint
 echo 'vLLM actionlint: Done'
+
+shellcheck() {
+    if [ -z "$DOCKER" ]; then
+        return
+    fi
+    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo --entrypoint /usr/bin/find "${ACTIONLINT_IMAGE}" \
+        /repo -type f -name "*.sh" -exec /usr/local/bin/shellcheck {} +
+}
+
+echo 'vLLM shellcheck:'
+shellcheck
+echo 'vLLM shellcheck: Done'
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted files. Please review and stage the changes.'
