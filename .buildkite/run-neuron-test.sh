@@ -17,7 +17,7 @@ if [ -f /tmp/neuron-docker-build-timestamp ]; then
         echo "$current_time" > /tmp/neuron-docker-build-timestamp
     fi
 else
-    echo "$(date +%s)" > /tmp/neuron-docker-build-timestamp
+    date "+%s" > /tmp/neuron-docker-build-timestamp
 fi
 
 docker build -t neuron -f Dockerfile.neuron .
