@@ -23,6 +23,7 @@ from vllm.model_executor.sampling_metadata import (SamplingMetadata,
 from vllm.sampling_params import SamplingType
 from vllm.sequence import (CompletionSequenceGroupOutput, Logprob,
                            PromptLogprobs, SampleLogprobs, SequenceOutput)
+from vllm.transformers_utils.detokenizer import INVALID_TOKEN_ID
 
 if envs.VLLM_USE_FLASHINFER_SAMPLER and find_spec("flashinfer"):
     import flashinfer.sampling
@@ -767,10 +768,10 @@ def _sample_with_torch(
 
     # Create output tensor for sampled token ids.
     if include_gpu_probs_tensor:
-        sampled_token_ids_tensor = torch.empty(logprobs.shape[0],
-                                               1,
-                                               dtype=torch.long,
-                                               device=logprobs.device)
+        sampled_token_ids_tensor = torch.full((logprobs.shape[0], 1),
+                                              INVALID_TOKEN_ID,
+                                              dtype=torch.long,
+                                              device=logprobs.device)
     else:
         sampled_token_ids_tensor = None
 
