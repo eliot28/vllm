@@ -86,7 +86,10 @@ torch::Tensor marlin_gemm(torch::Tensor& a, torch::Tensor& b_q_weight,
 namespace machete {
 
 std::vector<std::string> supported_schedules(
-    vllm::ScalarTypeTorchPtr const& btype);
+    at::ScalarType a_type, vllm::ScalarTypeTorchPtr b_type,
+    c10::optional<at::ScalarType> maybe_scales_type,
+    c10::optional<at::ScalarType> maybe_zeros_type,
+    c10::optional<at::ScalarType> maybe_out_type);
 
 torch::Tensor gemm(torch::Tensor const& A, torch::Tensor const& B,
                    vllm::ScalarTypeTorchPtr const& btype,
