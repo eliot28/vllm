@@ -102,8 +102,7 @@ run_serving_tests() {
     bash ../.buildkite/nightly-benchmarks/scripts/launch-trt-server.sh "$server_params" "$common_params"
 
     # wait until the server is alive
-    wait_for_server
-    if [ $? -eq 0 ]; then
+    if wait_for_server; then
       echo ""
       echo "trt server is up and running."
     else

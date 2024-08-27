@@ -293,8 +293,7 @@ run_serving_tests() {
     server_pid=$!
 
     # wait until the server is alive
-    wait_for_server
-    if [ $? -eq 0 ]; then
+    if wait_for_server; then
       echo ""
       echo "vllm server is up and running."
     else

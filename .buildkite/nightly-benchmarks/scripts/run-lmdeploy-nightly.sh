@@ -116,8 +116,7 @@ run_serving_tests() {
     bash -c "$server_command" &
 
     # wait until the server is alive
-    wait_for_server
-    if [ $? -eq 0 ]; then
+    if wait_for_server; then
       echo ""
       echo "lmdeploy server is up and running."
     else
