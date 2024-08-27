@@ -4,7 +4,7 @@ URL="https://public.ecr.aws/v2/q9t5s3a7/vllm-ci-test-repo/manifests/$BUILDKITE_C
 
 retries=0
 while [ $retries -lt 1000 ]; do
-    if [ $(curl -s -L -H "Authorization: Bearer $TOKEN" -o /dev/null -w "%{http_code}" $URL) -eq 200 ]; then
+    if [ "$(curl -s -L -H "Authorization: Bearer $TOKEN" -o /dev/null -w "%{http_code}" "$URL")" -eq 200 ]; then
         exit 0
     fi
 

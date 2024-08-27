@@ -11,7 +11,7 @@ check_gpus() {
     echo "Need at least 1 GPU to run benchmarking."
     exit 1
   fi
-  declare -g gpu_type=$(echo $(nvidia-smi --query-gpu=name --format=csv,noheader) | awk '{print $2}')
+  declare -g gpu_type=$(nvidia-smi --query-gpu=name --format=csv,noheader | awk '{print $2}')
   echo "GPU type is $gpu_type"
 }
 
@@ -95,15 +95,14 @@ run_serving_tests() {
 
 
 
-    cd $VLLM_SOURCE_CODE_LOC/benchmarks
+    cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
 
 
     echo "Running test case $test_name"
     bash ../.buildkite/nightly-benchmarks/scripts/launch-trt-server.sh "$server_params" "$common_params"
 
     # wait until the server is alive
-    wait_for_server
-    if [ $? -eq 0 ]; then
+    if wait_for_server; then
       echo ""
       echo "trt server is up and running."
     else
@@ -113,13 +112,13 @@ run_serving_tests() {
     fi
 
     # prepare tokenizer
-    cd $VLLM_SOURCE_CODE_LOC/benchmarks
+    cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
     rm -rf /tokenizer_cache
     mkdir /tokenizer_cache
     python ../.buildkite/nightly-benchmarks/scripts/download-tokenizer.py \
       --model "$model" \
       --cachedir /tokenizer_cache
-    cd $VLLM_SOURCE_CODE_LOC/benchmarks
+    cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
     
 
     # iterate over different QPS
@@ -194,7 +193,7 @@ main() {
 
 
   # enter vllm directory
-  cd $VLLM_SOURCE_CODE_LOC/benchmarks
+  cd "$VLLM_SOURCE_CODE_LOC/benchmarks"
 
   declare -g RESULTS_FOLDER=results/
   mkdir -p $RESULTS_FOLDER

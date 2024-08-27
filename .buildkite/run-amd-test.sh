@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script runs test inside the corresponding ROCm docker container.
 set -ex
 
@@ -57,17 +59,17 @@ done
 echo "--- Pulling container" 
 image_name="rocm/vllm-ci:${BUILDKITE_COMMIT}"
 container_name="rocm_${BUILDKITE_COMMIT}_$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 10; echo)"
-docker pull ${image_name}
+docker pull "${image_name}"
 
 remove_docker_container() {
-   docker rm -f ${container_name} || docker image rm -f ${image_name} || true
+   docker rm -f "${container_name}" || docker image rm -f "${image_name}" || true
 }
 trap remove_docker_container EXIT
 
 echo "--- Running container"
 
 HF_CACHE="$(realpath ~)/huggingface"
-mkdir -p ${HF_CACHE}
+mkdir -p "${HF_CACHE}"
 HF_MOUNT="/root/.cache/huggingface"
 
 docker run \
@@ -77,9 +79,9 @@ docker run \
         --rm \
         -e HIP_VISIBLE_DEVICES=0 \
         -e HF_TOKEN \
-        -v ${HF_CACHE}:${HF_MOUNT} \
-        -e HF_HOME=${HF_MOUNT} \
-        --name ${container_name} \
-        ${image_name} \
+        -v "${HF_CACHE}:${HF_MOUNT}" \
+        -e "HF_HOME=${HF_MOUNT}" \
+        --name "${container_name}" \
+        "${image_name}" \
         /bin/bash -c "${@}"
 

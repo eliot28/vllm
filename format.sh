@@ -30,14 +30,14 @@ CLANGFORMAT_VERSION=$(clang-format --version | awk '{print $3}')
 
 # # params: tool name, tool version, required version
 tool_version_check() {
-    if [[ $2 != $3 ]]; then
+    if [[ "$2" != "$3" ]]; then
         echo "Wrong $1 version installed: $3 is required, not $2."
         exit 1
     fi
 }
 
-tool_version_check "yapf" $YAPF_VERSION "$(grep yapf requirements-lint.txt | cut -d'=' -f3)"
-tool_version_check "ruff" $RUFF_VERSION "$(grep "ruff==" requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "yapf" "$YAPF_VERSION" "$(grep yapf requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "ruff" "$RUFF_VERSION" "$(grep "ruff==" requirements-lint.txt | cut -d'=' -f3)"
 tool_version_check "mypy" "$MYPY_VERSION" "$(grep mypy requirements-lint.txt | cut -d'=' -f3)"
 tool_version_check "isort" "$ISORT_VERSION" "$(grep isort requirements-lint.txt | cut -d'=' -f3)"
 tool_version_check "codespell" "$CODESPELL_VERSION" "$(grep codespell requirements-lint.txt | cut -d'=' -f3)"
@@ -264,7 +264,7 @@ clang_format_changed() {
     MERGEBASE="$(git merge-base origin/main HEAD)"
 
     # Get the list of changed files, excluding the specified ones
-    changed_files=$(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.h' '*.cpp' '*.cu' '*.cuh' | grep -vFf <(printf "%s\n" "${CLANG_FORMAT_EXCLUDES[@]}"))
+    changed_files=$(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.h' '*.cpp' '*.cu' '*.cuh' | (grep -vFf <(printf "%s\n" "${CLANG_FORMAT_EXCLUDES[@]}") || echo -e))
     if [ -n "$changed_files" ]; then
         echo "$changed_files" | xargs -P 5 clang-format -i
     fi
@@ -287,6 +287,41 @@ else
 fi
 echo 'vLLM clang-format: Done'
 
+echo 'vLLM actionlint:'
+
+DOCKER=""
+ACTIONLINT_IMAGE="vllm/actionlint:latest"
+if command -v "docker" &>/dev/null; then
+    DOCKER="docker"
+elif command -v "podman" &>/dev/null; then
+    DOCKER="podman"
+else
+    echo "Docker or Podman are not installed. Please install one if you want to lint GitHub CI configuration and shell scripts."
+fi
+
+actionlint() {
+    if [ -z "$DOCKER" ]; then
+        return
+    fi
+    # Ensure we use the same version of actionlint as CI
+    ${DOCKER} build --tag "${ACTIONLINT_IMAGE}" - < .github/workflows/actionlint.dockerfile
+    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo "${ACTIONLINT_IMAGE}" -color
+}
+
+actionlint
+echo 'vLLM actionlint: Done'
+
+shellcheck() {
+    if [ -z "$DOCKER" ]; then
+        return
+    fi
+    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo --entrypoint /usr/bin/find "${ACTIONLINT_IMAGE}" \
+        /repo -type f -name "*.sh" -exec /usr/local/bin/shellcheck {} +
+}
+
+echo 'vLLM shellcheck:'
+shellcheck
+echo 'vLLM shellcheck: Done'
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted files. Please review and stage the changes.'
