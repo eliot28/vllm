@@ -271,7 +271,8 @@ def run_greedy_equality_correctness_test(baseline_llm_generator,
                                          max_output_len,
                                          force_output_len: bool,
                                          print_tokens: bool = False,
-                                         ensure_all_accepted: bool = False):
+                                         ensure_all_accepted: bool = False,
+                                         num_logprobs: Optional[int] = None):
     """Helper method that compares the outputs of both the baseline LLM and
     the test LLM. It asserts greedy equality, e.g. that the outputs are exactly
     the same when temperature is zero.
@@ -285,7 +286,8 @@ def run_greedy_equality_correctness_test(baseline_llm_generator,
                                   temperature=0.0,
                                   seeded=False,
                                   print_tokens=print_tokens,
-                                  ensure_all_accepted=ensure_all_accepted)
+                                  ensure_all_accepted=ensure_all_accepted,
+                                  num_logprobs=num_logprobs)
 
 
 def run_equality_correctness_test(
@@ -298,7 +300,8 @@ def run_equality_correctness_test(
         seeded: bool,
         print_tokens: bool = False,
         ensure_all_accepted: bool = False,
-        expected_acceptance_rate: Optional[float] = None):
+        expected_acceptance_rate: Optional[float] = None,
+        num_logprobs: Optional[int] = None):
     """Helper method that compares the outputs of both the baseline LLM and
     the test LLM. It asserts greedy equality, e.g. that the outputs are exactly
     the same when temperature is zero (or when temperature is > 0 and seeded).
@@ -328,6 +331,8 @@ def run_equality_correctness_test(
                 ignore_eos=ignore_eos,
                 temperature=temperature,
                 seed=i,
+                logprobs=num_logprobs,
+                prompt_logprobs=num_logprobs,
             ) for i in range(len(prompts))
         ]
     else:
@@ -335,6 +340,8 @@ def run_equality_correctness_test(
             max_tokens=max_output_len,
             ignore_eos=ignore_eos,
             temperature=temperature,
+            logprobs=num_logprobs,
+            prompt_logprobs=num_logprobs,
         )
 
     (spec_batch_tokens, spec_batch_token_ids,

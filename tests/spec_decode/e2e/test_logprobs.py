@@ -291,6 +291,7 @@ def run_greedy_logprobs_correctness_test(baseline_llm_generator,
         ignore_eos=ignore_eos,
         temperature=temperature,
         logprobs=logprob_rank,
+        prompt_logprobs=1,
     )
 
     spec_batch_logprobs = get_logprobs_from_llm_generator(
@@ -387,6 +388,7 @@ def test_logprobs_disabled(baseline_llm_generator, test_llm_generator):
         ignore_eos=True,
         temperature=0.0,
         logprobs=2,
+        prompt_logprobs=3,
     )
 
     spec_batch_logprobs = get_logprobs_from_llm_generator(
