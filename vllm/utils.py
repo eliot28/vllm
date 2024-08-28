@@ -411,7 +411,7 @@ def make_async(func: Callable[P, T]) -> Callable[P, Awaitable[T]]:
 
 
 def _next_task(iterator: AsyncGenerator[T, None],
-               loop: AbstractEventLoop) -> Task[T]:
+               loop: AbstractEventLoop) -> Task:
     return loop.create_task(iterator.__anext__())  # type: ignore[arg-type]
 
 
