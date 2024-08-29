@@ -25,15 +25,29 @@ class FusedMoeWeightScaleSupported(Enum):
 class FusedMoEMethodBase(QuantizeMethodBase):
 
     @abstractmethod
-    def create_weights(self, layer: torch.nn.Module, num_experts: int,
-                       hidden_size: int, intermediate_size: int,
-                       params_dtype: torch.dtype, **extra_weight_attrs):
+    def create_weights(
+        self,
+        layer: torch.nn.Module,
+        num_experts: int,
+        hidden_size: int,
+        intermediate_size: int,
+        params_dtype: torch.dtype,
+        **extra_weight_attrs,
+    ):
         raise NotImplementedError
 
     @abstractmethod
-    def apply(self, layer: torch.nn.Module, x: torch.Tensor,
-              router_logits: torch.Tensor, top_k: int, renormalize: bool,
-              use_grouped_topk: bool) -> torch.Tensor:
+    def apply(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        router_logits: torch.Tensor,
+        top_k: int,
+        renormalize: bool = True,
+        use_grouped_topk: bool = False,
+        num_expert_group: Optional[int] = None,
+        topk_group: Optional[int] = None,
+    ) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -43,22 +57,25 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
     def create_weights(self, layer: torch.nn.Module, num_experts: int,
                        hidden_size: int, intermediate_size: int,
                        params_dtype: torch.dtype, **extra_weight_attrs):
-
         # Fused gate_up_proj (column parallel)
-        w13_weight = torch.nn.Parameter(torch.empty(num_experts,
-                                                    2 * intermediate_size,
-                                                    hidden_size,
-                                                    dtype=params_dtype),
-                                        requires_grad=False)
+        w13_weight = torch.nn.Parameter(
+            torch.empty(num_experts,
+                        2 * intermediate_size,
+                        hidden_size,
+                        dtype=params_dtype),
+            requires_grad=False,
+        )
         layer.register_parameter("w13_weight", w13_weight)
         set_weight_attrs(w13_weight, extra_weight_attrs)
 
         # down_proj (row parallel)
-        w2_weight = torch.nn.Parameter(torch.empty(num_experts,
-                                                   hidden_size,
-                                                   intermediate_size,
-                                                   dtype=params_dtype),
-                                       requires_grad=False)
+        w2_weight = torch.nn.Parameter(
+            torch.empty(num_experts,
+                        hidden_size,
+                        intermediate_size,
+                        dtype=params_dtype),
+            requires_grad=False,
+        )
         layer.register_parameter("w2_weight", w2_weight)
         set_weight_attrs(w2_weight, extra_weight_attrs)
 
@@ -67,10 +84,10 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
               x: torch.Tensor,
               router_logits: torch.Tensor,
               top_k: int,
-              renormalize: bool,
-              use_grouped_topk: bool,
-              topk_group: Optional[int] = None,
-              num_expert_group: Optional[int] = None) -> torch.Tensor:
+              renormalize: bool = True,
+              use_grouped_topk: bool = False,
+              num_expert_group: Optional[int] = None,
+              topk_group: Optional[int] = None) -> torch.Tensor:
 
         return self.forward(x=x,
                             layer=layer,
@@ -182,6 +199,7 @@ class FusedMoE(torch.nn.Module):
                         get_tensor_model_parallel_world_size())
         self.top_k = top_k
         self.num_experts = num_experts
+        self.intermediate_size = intermediate_size
         self.intermediate_size_per_partition = intermediate_size // self.tp_size
         self.reduce_results = reduce_results
         self.renormalize = renormalize
@@ -192,8 +210,8 @@ class FusedMoE(torch.nn.Module):
         self.topk_group = topk_group
 
         if quant_config is None:
-            self.quant_method: Optional[QuantizeMethodBase] = (
-                UnquantizedFusedMoEMethod())
+            self.quant_method: Optional[
+                QuantizeMethodBase] = UnquantizedFusedMoEMethod()
         else:
             self.quant_method = quant_config.get_quant_method(self, prefix)
         assert self.quant_method is not None
@@ -204,7 +222,8 @@ class FusedMoE(torch.nn.Module):
             hidden_size=hidden_size,
             intermediate_size=self.intermediate_size_per_partition,
             params_dtype=params_dtype,
-            weight_loader=self.weight_loader)
+            weight_loader=self.weight_loader,
+        )
 
     def _load_per_tensor_weight_scale(self, shard_id: str,
                                       param: torch.nn.Parameter,
@@ -292,9 +311,41 @@ class FusedMoE(torch.nn.Module):
         # Input scales can be loaded directly and should be equal.
         param_data[expert_id] = loaded_weight
 
-    def weight_loader(self, param: torch.nn.Parameter,
-                      loaded_weight: torch.Tensor, weight_name: str,
-                      shard_id: str, expert_id: int) -> None:
+    def weight_loader(
+        self,
+        param: torch.nn.Parameter,
+        loaded_weight: torch.Tensor,
+        weight_name: str,
+        shard_id: str,
+        expert_id: int,
+        is_gptq: bool = False,
+    ):
+        if is_gptq:
+            param_data = param.data
+            if ("_qweight" in weight_name or "_scales" in weight_name
+                    or "_qzeros" in weight_name):
+                if "w13" in weight_name:
+                    shard_size = loaded_weight.size()[-1]
+                    if shard_id == "w1":
+                        param_data[expert_id, :, :shard_size] = loaded_weight
+                    elif shard_id == "w3" or shard_id == "w2":
+                        param_data[expert_id, :, shard_size:] = loaded_weight
+                    else:
+                        raise ValueError(f"Invalid shard_id: {shard_id}: "
+                                         "must be 0, 1, or 2.")
+                elif "w2" in weight_name:
+                    param_data[expert_id][:] = loaded_weight
+                else:
+                    raise ValueError(f"Invalid weight name: {weight_name}: "
+                                     "must contain 'w13' or 'w2'.")
+            elif "_g_idx" in weight_name:
+                if "w13" not in weight_name and "w2" not in weight_name:
+                    raise ValueError(f"Invalid weight name: {weight_name}: "
+                                     "must contain 'w13' or 'w2'.")
+                param_data[expert_id] = loaded_weight
+            else:
+                raise ValueError(f"Invalid weight name: {weight_name}.")
+            return
 
         if shard_id not in ("w1", "w2", "w3"):
             raise ValueError(f"shard_id must be ['w1','w2','w3'] but "
@@ -425,8 +476,8 @@ class FusedMoE(torch.nn.Module):
             top_k=self.top_k,
             renormalize=self.renormalize,
             use_grouped_topk=self.use_grouped_topk,
-            topk_group=self.topk_group,
-            num_expert_group=self.num_expert_group)
+            num_expert_group=self.num_expert_group,
+            topk_group=self.topk_group)
 
         if self.reduce_results and self.tp_size > 1:
             final_hidden_states = tensor_model_parallel_all_reduce(
@@ -439,18 +490,88 @@ class FusedMoE(torch.nn.Module):
             cls, ckpt_gate_proj_name: str, ckpt_down_proj_name: str,
             ckpt_up_proj_name: str,
             num_experts: int) -> List[Tuple[str, str, int, str]]:
-
-        return [
-            # (param_name, weight_name, expert_id, shard_id)
-            ("experts.w13_" if weight_name
-             in [ckpt_gate_proj_name, ckpt_up_proj_name] else "experts.w2_",
-             f"experts.{expert_id}.{weight_name}.", expert_id, shard_id)
-            for expert_id in range(num_experts) for shard_id, weight_name in [
-                ("w1", ckpt_gate_proj_name),
-                ("w2", ckpt_down_proj_name),
-                ("w3", ckpt_up_proj_name),
-            ]
+        gate_up = [ckpt_gate_proj_name, ckpt_up_proj_name]
+        gate_down_up = [
+            ckpt_gate_proj_name, ckpt_down_proj_name, ckpt_up_proj_name
         ]
+        return ([
+            # These are the weight scales for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_weight_scale"
+                if weight_name in gate_up else "experts.w2_weight_scale",
+                f"experts.{expert_id}.{weight_name}.weight_scale",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the weights for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_weight"
+                if weight_name in gate_up else "experts.w2_weight",
+                f"experts.{expert_id}.{weight_name}.weight",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the weights for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_scales"
+                if weight_name in gate_up else "experts.w2_scales",
+                f"experts.{expert_id}.{weight_name}.scales",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the weight scales for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.a13_scale"
+                if weight_name in gate_up else "experts.a2_scale",
+                f"experts.{expert_id}.{weight_name}.input_scale",
+                expert_id,
+                f"a{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the qweights for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_qweight"
+                if weight_name in gate_up else "experts.w2_qweight",
+                f"experts.{expert_id}.{weight_name}.qweight",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the g_idx and g_idx_sort_indices scales for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_g_idx"
+                if weight_name in gate_up else "experts.w2_g_idx",
+                f"experts.{expert_id}.{weight_name}.g_idx",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ] + [
+            # These are the g_idx and g_idx_sort_indices scales for the experts
+            # (param_name, weight_name, expert_id, shard_id)
+            (
+                "experts.w13_qzeros"
+                if weight_name in gate_up else "experts.w2_qzeros",
+                f"experts.{expert_id}.{weight_name}.qzeros",
+                expert_id,
+                f"w{shard_id + 1}",
+            ) for expert_id in range(num_experts)
+            for shard_id, weight_name in enumerate(gate_down_up)
+        ])
 
     def _load_fp8_scale(self, param: torch.nn.Parameter,
                         loaded_weight: torch.Tensor, weight_name: str,
