@@ -6,56 +6,21 @@ import pytest
 from vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.engine.llm_engine import LLMEngine
-from vllm.executor.gpu_executor import GPUExecutor, GPUExecutorAsync
 from vllm.sampling_params import SamplingParams
-
-
-class Mock:
-    ...
-
-
-class CustomGPUExecutor(GPUExecutor):
-
-    def execute_model(self, *args, **kwargs):
-        # Drop marker to show that this was ran
-        with open(".marker", "w"):
-            ...
-        return super().execute_model(*args, **kwargs)
-
-
-class CustomGPUExecutorAsync(GPUExecutorAsync):
-
-    async def execute_model_async(self, *args, **kwargs):
-        with open(".marker", "w"):
-            ...
-        return await super().execute_model_async(*args, **kwargs)
-
-
-@pytest.mark.parametrize("model", ["facebook/opt-125m"])
-def test_custom_executor_type_checking(model):
-    with pytest.raises(ValueError):
-        engine_args = EngineArgs(model=model,
-                                 distributed_executor_backend=Mock)
-        LLMEngine.from_engine_args(engine_args)
-    with pytest.raises(ValueError):
-        engine_args = AsyncEngineArgs(model=model,
-                                      distributed_executor_backend=Mock)
-        AsyncLLMEngine.from_engine_args(engine_args)
-    with pytest.raises(TypeError):
-        engine_args = AsyncEngineArgs(
-            model=model, distributed_executor_backend=CustomGPUExecutor)
-        AsyncLLMEngine.from_engine_args(engine_args)
 
 
 @pytest.mark.parametrize("model", ["facebook/opt-125m"])
 def test_custom_executor(model, tmpdir):
     cwd = os.path.abspath(".")
     os.chdir(tmpdir)
+    old_env = os.environ.get("VLLM_PLUGINS", None)
     try:
+        os.environ["VLLM_PLUGINS"] = "switch_executor"
         assert not os.path.exists(".marker")
 
-        engine_args = EngineArgs(
-            model=model, distributed_executor_backend=CustomGPUExecutor)
+        engine_args = EngineArgs(model=model,
+                                 enforce_eager=True,
+                                 gpu_memory_utilization=0.3)
         engine = LLMEngine.from_engine_args(engine_args)
         sampling_params = SamplingParams(max_tokens=1)
 
@@ -65,17 +30,24 @@ def test_custom_executor(model, tmpdir):
         assert os.path.exists(".marker")
     finally:
         os.chdir(cwd)
+        if old_env is not None:
+            os.environ["VLLM_PLUGINS"] = old_env
+        else:
+            del os.environ["VLLM_PLUGINS"]
 
 
 @pytest.mark.parametrize("model", ["facebook/opt-125m"])
 def test_custom_executor_async(model, tmpdir):
     cwd = os.path.abspath(".")
     os.chdir(tmpdir)
+    old_env = os.environ.get("VLLM_PLUGINS", None)
     try:
+        os.environ["VLLM_PLUGINS"] = "switch_executor"
         assert not os.path.exists(".marker")
 
-        engine_args = AsyncEngineArgs(
-            model=model, distributed_executor_backend=CustomGPUExecutorAsync)
+        engine_args = AsyncEngineArgs(model=model,
+                                      enforce_eager=True,
+                                      gpu_memory_utilization=0.3)
         engine = AsyncLLMEngine.from_engine_args(engine_args)
         sampling_params = SamplingParams(max_tokens=1)
 
@@ -89,3 +61,7 @@ def test_custom_executor_async(model, tmpdir):
         assert os.path.exists(".marker")
     finally:
         os.chdir(cwd)
+        if old_env is not None:
+            os.environ["VLLM_PLUGINS"] = old_env
+        else:
+            del os.environ["VLLM_PLUGINS"]
