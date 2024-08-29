@@ -11,6 +11,7 @@ from vllm.outputs import (CompletionOutput, EmbeddingOutput,
                           EmbeddingRequestOutput, RequestOutput)
 from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
+from vllm.spec_decode.spec_decode_params import SpecDecodeParams
 
 from .version import __commit__, __version__
 
@@ -23,6 +24,7 @@ __all__ = [
     "TextPrompt",
     "TokensPrompt",
     "SamplingParams",
+    "SpecDecodeParams",
     "RequestOutput",
     "CompletionOutput",
     "EmbeddingOutput",

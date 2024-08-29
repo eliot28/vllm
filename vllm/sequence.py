@@ -17,6 +17,7 @@ from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.spec_decode.metrics import SpecDecodeWorkerMetrics
+from vllm.spec_decode.spec_decode_params import SpecDecodeParams
 
 if TYPE_CHECKING:
     from vllm.inputs import LLMInputs
@@ -348,6 +349,7 @@ class Sequence:
         block_size: int,
         eos_token_id: Optional[int] = None,
         lora_request: Optional[LoRARequest] = None,
+        spec_decode_params: Optional[SpecDecodeParams] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         from_decoder_prompt: bool = True,
     ) -> None:
@@ -356,6 +358,7 @@ class Sequence:
         self.block_size = block_size
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
+        self.spec_decode_params = spec_decode_params
         self.prompt_adapter_request = prompt_adapter_request
         self.from_decoder_prompt = from_decoder_prompt
         self._prompt: Optional[str] = None
@@ -590,6 +593,7 @@ class SequenceGroup:
         arrival_time: float,
         sampling_params: Optional[SamplingParams] = None,
         lora_request: Optional[LoRARequest] = None,
+        spec_decode_params: Optional[SpecDecodeParams] = None,
         embeddings: Optional[List[float]] = None,
         pooling_params: Optional[PoolingParams] = None,
         encoder_seq: Optional[Sequence] = None,
@@ -608,6 +612,7 @@ class SequenceGroup:
                                       first_token_time=None,
                                       time_in_queue=None)
         self.lora_request = lora_request
+        self.spec_decode_params = spec_decode_params
         self.prompt_logprobs: Optional[PromptLogprobs] = None
         self.state = SequenceGroupState()
         self.embeddings = embeddings
@@ -867,6 +872,8 @@ class SequenceGroupMetadata(
         token_chunk_size: The number of tokens to be processed (per sequence).
             None if chunking is not required.
         lora_request: LoRA request.
+        spec_decode_params: The parameters used to guide proposal generation
+            for speculative decoding.
         computed_block_nums: The block numbers that are already computed,
             used in prefix caching.
         state: Internal state tied to this sequence group.
@@ -891,6 +898,7 @@ class SequenceGroupMetadata(
     do_sample: bool = True
     pooling_params: Optional[PoolingParams] = None
     lora_request: Optional[LoRARequest] = None
+    spec_decode_params: Optional[SpecDecodeParams] = None
     computed_block_nums: Optional[List[int]] = None
     state: Optional[SequenceGroupState] = msgspec.field(
         default_factory=lambda: SequenceGroupState())
