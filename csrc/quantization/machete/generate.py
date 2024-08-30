@@ -485,8 +485,14 @@ def generate():
             ((128, 32), (1, 1, 1)),
             ((128, 64), (1, 1, 1)),
             ((128, 128), (1, 1, 1)),
+            ((128, 128), (2, 1, 1)),
+            ((128, 128), (4, 1, 1)),
+            ((128, 128), (8, 1, 1)),
+            ((128, 128), (1, 2, 1)),
+            ((128, 128), (1, 4, 1)),
+            ((128, 128), (1, 8, 1)),
         ) for kernel_schedule in (TmaMI, ) for epilogue_schedule in (TmaCoop, )
-        for tile_scheduler in (TileSchedulerType.StreamK, )
+        for tile_scheduler in (TileSchedulerType.StreamK, TileSchedulerType.Default)
     ]
 
     # For now we use the same heuristic for all types
