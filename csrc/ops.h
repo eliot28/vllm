@@ -87,22 +87,26 @@ namespace machete {
 
 std::vector<std::string> supported_schedules(
     at::ScalarType a_type, vllm::ScalarTypeTorchPtr b_type,
-    c10::optional<at::ScalarType> maybe_scales_type,
-    c10::optional<at::ScalarType> maybe_zeros_type,
+    c10::optional<at::ScalarType> maybe_group_scales_type,
+    c10::optional<at::ScalarType> maybe_group_zeros_type,
+    c10::optional<at::ScalarType> maybe_channel_scales_type,
+    c10::optional<at::ScalarType> maybe_token_scales_type,
     c10::optional<at::ScalarType> maybe_out_type);
 
-torch::Tensor gemm(torch::Tensor const& A, torch::Tensor const& B,
-                   vllm::ScalarTypeTorchPtr const& btype,
-                   c10::optional<at::ScalarType> const& out_type,
-                   c10::optional<torch::Tensor> const& scales,
-                   c10::optional<torch::Tensor> const& zeros,
-                   c10::optional<int64_t> group_size,
-                   c10::optional<torch::Tensor> const& C,
-                   c10::optional<double> alpha, c10::optional<double> beta,
-                   c10::optional<std::string> schedule);
+torch::Tensor mm(torch::Tensor const& A, torch::Tensor const& B,
+                 vllm::ScalarTypeTorchPtr const& btype,
+                 c10::optional<at::ScalarType> const& maybe_out_type,
+                 c10::optional<torch::Tensor> const& maybe_group_scales,
+                 c10::optional<torch::Tensor> const& maybe_group_zeros,
+                 c10::optional<int64_t> maybe_group_size,
+                 c10::optional<torch::Tensor> const& maybe_channel_scales,
+                 c10::optional<torch::Tensor> const& maybe_token_scales,
+                 c10::optional<std::string> maybe_schedule);
 
-torch::Tensor prepack_B(torch::Tensor const& B, at::ScalarType const& atype,
-                        vllm::ScalarTypeTorchPtr const& btype);
+torch::Tensor prepack_B(
+    torch::Tensor const& B, at::ScalarType const& a_type,
+    vllm::ScalarTypeTorchPtr const& b_type,
+    c10::optional<at::ScalarType> const& maybe_group_scales_type);
 
 };  // namespace machete
 
