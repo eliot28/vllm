@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, TYPE_CHECKING, Optional, Tuple, Type
 
 from vllm.attention.ops.paged_attn import PagedAttention
-from vllm.worker.npu_model_runner import ModelInputForNPUBuilder
 
 import torch
 try:
@@ -20,6 +19,9 @@ from vllm.attention.backends.utils import (PAD_SLOT_ID, compute_slot_mapping,
                                            compute_slot_mapping_start_idx,
                                            is_block_tables_empty)
 from vllm.utils import make_tensor_with_pad
+
+if TYPE_CHECKING:
+    from vllm.worker.npu_model_runner import ModelInputForNPUBuilder
 
 SHARE_MASK_TRIL_PREFIX_CACHE = None
 SHARE_MASK_TRIL = None
@@ -47,7 +49,7 @@ class AscendAttentionBackend(AttentionBackend):
     ) -> Tuple[int, ...]:
         # return (num_kv_heads, num_blocks, block_size, head_size)
         return (num_blocks, block_size, num_kv_heads*head_size)
-        
+
 
     @staticmethod
     def swap_blocks(
@@ -85,7 +87,7 @@ class AscendAttentionBackend(AttentionBackend):
         #     k_cache[:, dst_indices] = k_cache[:, src_indices]
         #     torch.ops.xla.dynamo_set_buffer_donor_(v_cache, True)
         #     v_cache[:, dst_indices] = v_cache[:, src_indices]
-    
+
         # src_indices, dst_indices = src_to_dists
         # for k_cache, v_cache in kv_caches:
         #     torch.ops.xla.dynamo_set_buffer_donor_(k_cache, True)
@@ -188,7 +190,7 @@ class AscendMetadata(AttentionMetadata):
     seq_lens: Optional[List[int]]
     seq_lens_tensor: Optional[torch.Tensor]
     max_seq_len: Optional[int]
-    
+
     # metadata for NPU
     max_query_len: Optional[int]
     subquery_start_loc: Optional[torch.Tensor]
@@ -199,10 +201,10 @@ class AscendMetadata(AttentionMetadata):
     slot_mapping: Optional[torch.Tensor] = None
     # slot_indices: Optional[torch.Tensor] = None
     use_cuda_graph: bool = False # TODO (cmq) is this neccesary?
-    
+
     pse_shift: Optional[torch.Tensor] = None
     sparse_mode: Optional[int] = 0
-    
+
     attn_mask: Optional[torch.Tensor] = None
 
     @property
@@ -474,7 +476,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 slot_mapping = attn_metadata.decode_metadata.slot_mapping
             print(150*"-", "\n", "kv_cache.shape: ", kv_cache.shape, "\n", 150*"-")
             key_cache, value_cache = kv_cache
-            AscendPagedAttention.write_to_paged_cache(key, value, key_cache, value_cache, 
+            AscendPagedAttention.write_to_paged_cache(key, value, key_cache, value_cache,
                                                       slot_mapping, self.kv_cache_dtype, kv_scale)
 
         # query = query * self.scale
@@ -485,7 +487,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
             # value = value.view(batch_size, seq_len, self.num_kv_heads,
             #                 self.head_size)
             # print(120*"#", attn_metadata.max_seq_len, "\n", 120*"#", self.num_heads, "\n", 120*"#", self.head_size)
-            
+
             # TODO (cmq): modify attn_metadata.sparse_mode, attention_mask ...
             # add ENV var to turn on/off maskfree_attn and change 16384
             # batch_size = len(attn_metadata.seq_lens)
@@ -494,13 +496,13 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 attn_metadata.attn_mask = self.attn_free_mask_pfa
                 attn_metadata.sparse_mode = 2
                 print("***************** changing sparse mode ******************")
-            
+
             if attn_metadata.attn_mask is None:
                 query_len = attn_metadata.seq_lens_tensor
                 kv_len = torch.zeros_like(query_len).to(torch.long)
                 attention_mask = gen_input_mask(len(attn_metadata.seq_lens), attn_metadata.max_seq_len, query_len, kv_len)
                 # attention_mask = gen_input_mask(batch_size, attn_metadata.max_seq_len, query_len, kv_len)
-                
+
                 if self.sliding_window is not None:
                     attention_mask = ~attention_mask
                     attention_mask = torch.triu(attention_mask, diagonal= 1 - self.sliding_window)
@@ -552,7 +554,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
                         num_kv_heads=self.num_kv_heads,
                         scale=self.scale,
                         k_scale=k_scale,
-                        v_scale=v_scale,                
+                        v_scale=v_scale,
                     )
             print(500*"^")
 
