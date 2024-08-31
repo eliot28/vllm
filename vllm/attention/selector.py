@@ -9,7 +9,9 @@ from vllm.attention.backends.abstract import AttentionBackend
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.utils import is_cpu, is_hip, is_npu, is_openvino, is_tpu, is_xpu, is_mindie
-from vllm.model_executor.model_loader.ascend_mindie import model_supports_in_mindie
+
+if is_mindie():
+    from vllm.model_executor.model_loader.ascend_mindie import model_supports_in_mindie
 
 logger = init_logger(__name__)
 

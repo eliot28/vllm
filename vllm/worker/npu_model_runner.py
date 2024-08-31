@@ -32,8 +32,6 @@ from vllm.lora.request import LoRARequest
 from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
 from vllm.model_executor import SamplingMetadata
 from vllm.model_executor.model_loader import get_model
-from vllm.model_executor.model_loader.ascend_mindie import (
-    get_mindie_model, model_supports_in_mindie)
 from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
 from vllm.model_executor.models.interfaces import (supports_lora,
                                                    supports_vision)
@@ -50,6 +48,9 @@ from vllm.sequence import (IntermediateTensors, SamplerOutput,
 from vllm.utils import (DeviceMemoryProfiler, flatten_2d_lists,
                         get_kv_cache_torch_dtype, is_hip,
                         is_pin_memory_available, is_mindie, is_npu)
+if is_mindie():
+    from vllm.model_executor.model_loader.ascend_mindie import (
+        get_mindie_model, model_supports_in_mindie)
 from vllm.worker.model_runner_base import (
     ModelRunnerBase, ModelRunnerInputBase, ModelRunnerInputBuilderBase,
     _add_attn_metadata_broadcastable_dict,
@@ -719,8 +720,7 @@ class NPUModelRunnerBase(ModelRunnerBase[TModelInputForNPU]):
             int(self.cache_config.cpu_offload_gb * 1024**3))
 
     def model_router(self) -> None:
-        # TODO: model_support_in_mindie, get_mindie_model
-        if is_mindie and model_supports_in_mindie(self.model_config):
+        if is_mindie() and model_supports_in_mindie(self.model_config):
             self.model = get_mindie_model(self.model_config,
                                           self.device_config,
                                           self.load_config,
