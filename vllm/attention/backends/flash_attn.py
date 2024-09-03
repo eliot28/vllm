@@ -521,11 +521,11 @@ class FlashAttentionMetadataBuilder(
 class FlashAttentionImpl(AttentionImpl):
     """
     If the input tensors contain prompt tokens, the layout is as follows:
-    |<--------------- num_prefill_tokens ----------------->|	
+    |<--------------- num_prefill_tokens ----------------->|
     |<--prefill_0-->|<--prefill_1-->|...|<--prefill_N-1--->|
 
-    Otherwise, the layout is as follows:	
-    |<----------------- num_decode_tokens ------------------>|	
+    Otherwise, the layout is as follows:
+    |<----------------- num_decode_tokens ------------------>|
     |<--decode_0-->|..........|<--decode_M-1-->|<--padding-->|
 
     Generation tokens can contain padding when cuda-graph is used.
@@ -555,6 +555,7 @@ class FlashAttentionImpl(AttentionImpl):
         kv_cache_dtype: str,
         blocksparse_params: Optional[Dict[str, Any]] = None,
         logits_soft_cap: Optional[float] = None,
+        causal: bool = True,
     ) -> None:
         if blocksparse_params is not None:
             raise ValueError(
@@ -573,6 +574,7 @@ class FlashAttentionImpl(AttentionImpl):
             # In flash-attn, setting logits_soft_cap as 0 means no soft cap.
             logits_soft_cap = 0
         self.logits_soft_cap = logits_soft_cap
+        self.causal = causal
 
         assert self.num_heads % self.num_kv_heads == 0
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
@@ -677,7 +679,7 @@ class FlashAttentionImpl(AttentionImpl):
                     max_seqlen_q=prefill_meta.max_prefill_seq_len,
                     max_seqlen_k=prefill_meta.max_prefill_seq_len,
                     softmax_scale=self.scale,
-                    causal=True,
+                    causal=self.causal,
                     window_size=self.sliding_window,
                     alibi_slopes=self.alibi_slopes,
                     softcap=self.logits_soft_cap,
@@ -698,7 +700,7 @@ class FlashAttentionImpl(AttentionImpl):
                            cu_seqlens_k=prefill_meta.seq_start_loc,
                            max_seqlen_k=max_seq_len,
                            softmax_scale=self.scale,
-                           causal=True,
+                           causal=self.causal,
                            alibi_slopes=self.alibi_slopes,
                            block_table=prefill_meta.block_tables,
                            softcap=self.logits_soft_cap,
@@ -714,7 +716,7 @@ class FlashAttentionImpl(AttentionImpl):
                     block_table=decode_meta.block_tables,
                     cache_seqlens=decode_meta.seq_lens_tensor,
                     softmax_scale=self.scale,
-                    causal=True,
+                    causal=self.causal,
                     alibi_slopes=self.alibi_slopes,
                     softcap=self.logits_soft_cap,
                 ).squeeze(1)
