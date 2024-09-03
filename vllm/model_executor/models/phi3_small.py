@@ -439,7 +439,8 @@ class Phi3SmallForCausalLM(nn.Module):
                                    sampling_metadata)
         return next_tokens
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
 
         params_dict = dict(self.named_parameters())
         for name, loaded_weight in weights:

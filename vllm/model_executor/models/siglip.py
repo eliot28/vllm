@@ -512,7 +512,8 @@ class SiglipVisionModel(nn.Module):
             interpolate_pos_encoding=interpolate_pos_encoding,
         )
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         params_dict = dict(self.named_parameters())
         layer_count = len(self.vision_model.encoder.layers)
 

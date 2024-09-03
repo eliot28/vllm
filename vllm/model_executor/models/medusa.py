@@ -151,7 +151,8 @@ class Medusa(nn.Module):
             sampling_metadata=sampling_metadata,
         )
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         params_dict = dict(self.named_parameters())
 
         weights_map = {}

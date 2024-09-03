@@ -8,7 +8,7 @@ import math
 import os
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Type
 
 import gguf
 import huggingface_hub
@@ -178,6 +178,17 @@ def _initialize_model(
     )
 
 
+class WeightProviderById(ABC):
+    """Interface that fetches weights by model ID."""
+
+    @abstractmethod
+    def get_model_weights_by_id(
+            self, model: nn.Module, model_id: str,
+            revision_id: Optional[str]) -> Iterable[Tuple[str, torch.Tensor]]:
+        """Fetches a model weights by id."""
+        ...
+
+
 class BaseModelLoader(ABC):
     """Base class for model loaders."""
 
@@ -195,7 +206,7 @@ class BaseModelLoader(ABC):
         ...
 
 
-class DefaultModelLoader(BaseModelLoader):
+class DefaultModelLoader(WeightProviderById, BaseModelLoader):
     """Model loader that can load different file types from disk."""
 
     def __init__(self, load_config: LoadConfig):
@@ -203,6 +214,15 @@ class DefaultModelLoader(BaseModelLoader):
         if load_config.model_loader_extra_config:
             raise ValueError(f"Model loader extra config is not supported for "
                              f"load format {load_config.load_format}")
+
+    def get_model_weights_by_id(self, model: nn.Module, model_id: str,
+                                revision: Optional[str]):
+        fallback_to_pt_during_load = getattr(model,
+                                             "fall_back_to_pt_during_load",
+                                             True)
+
+        return self._get_weights_iterator(
+            model_id, revision, fall_back_to_pt=fallback_to_pt_during_load)
 
     def _maybe_download_from_modelscope(
             self, model: str, revision: Optional[str]) -> Optional[str]:
@@ -341,13 +361,10 @@ class DefaultModelLoader(BaseModelLoader):
                 model = _initialize_model(model_config, self.load_config,
                                           lora_config, cache_config,
                                           scheduler_config)
-            model.load_weights(
-                self._get_weights_iterator(model_config.model,
-                                           model_config.revision,
-                                           fall_back_to_pt=getattr(
-                                               model,
-                                               "fall_back_to_pt_during_load",
-                                               True)), )
+
+            weights = self.get_model_weights_by_id(model, model_config.model,
+                                                   model_config.revision)
+            model.load_weights(weights, weight_provider=self)
 
             for _, module in model.named_modules():
                 quant_method = getattr(module, "quant_method", None)

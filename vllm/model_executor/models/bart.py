@@ -931,7 +931,8 @@ class BartForConditionalGeneration(nn.Module):
                 return name, mapping["shard_id"]
         return name, None
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
 
         model_params_dict = dict(self.model.named_parameters())
         top_params_dict = dict(self.named_parameters())

@@ -318,7 +318,8 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal):
         next_tokens = self.language_model.sampler(logits, sampling_metadata)
         return next_tokens
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         params_dict = dict(self.named_parameters(remove_duplicate=False))
         for name, loaded_weight in weights:
             if "rotary_emb.inv_freq" in name:

@@ -396,7 +396,8 @@ class CLIPVisionModel(nn.Module):
 
     # (TODO) Add prefix argument for filtering out weights to be loaded
     #        ref: https://github.com/vllm-project/vllm/pull/7186#discussion_r1734163986
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         stacked_params_mapping = [
             # (param_name, shard_name, shard_id)
             ("qkv_proj", "q_proj", "q"),
