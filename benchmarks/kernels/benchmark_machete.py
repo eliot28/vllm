@@ -70,7 +70,7 @@ def rand_data(shape, dtype=torch.float16, scale=1):
         return torch.randint(-15, 15, shape, dtype=dtype, device="cuda")
 
 
-def machete_quantize_and_pack(atype: torch.dtype,
+def quantize_and_pack(atype: torch.dtype,
                               w: torch.Tensor,
                               wtype: ScalarType,
                               stype: Optional[torch.dtype],
@@ -87,10 +87,7 @@ def machete_quantize_and_pack(atype: torch.dtype,
         ref_zero_points_after_scales=True)
 
     w_q = pack_rows(w_q, wtype.size_bits, *w_q.shape)
-    w_q = w_q.t().contiguous().t()  # convert to col major
-    w_q_machete = ops.machete_prepack_B(w_q, atype, wtype, stype)
-
-    return w_ref, w_q_machete, w_s, w_zp
+    return w_ref, w_q, w_s, w_zp
 
 
 def create_bench_tensors(shape: Tuple[int, int, int],
@@ -115,7 +112,7 @@ def create_bench_tensors(shape: Tuple[int, int, int],
         if w.dtype.itemsize == 1:
             w = w.to(torch.float16)
 
-        w_ref, w_q_packed, w_s, w_zp = machete_quantize_and_pack(
+        w_ref, w_q_packed, w_s, w_zp = quantize_and_pack(
             a.dtype, w, types.weight_type, types.group_scale_type, group_size,
             types.group_zero_type is not None)
 
@@ -146,7 +143,7 @@ def create_bench_tensors(shape: Tuple[int, int, int],
 
 
 def torch_matmul_f16_create_bench_fn(bt: BenchmarkTensors) -> Callable:
-    a, w = bt.a, bt.w_ref
+    a, w = bt.a, bt.w_ref.to(bt.a.dtype)
     if a.dtype not in [torch.float16, torch.bfloat16]:
         a = a.to(torch.float16)
         w = w.to(torch.float16)
@@ -349,7 +346,10 @@ def bench(types: TypeConfig,
             token_scales_type=types.token_scale_type,
             channel_scales_type=types.channel_scale_type,
             out_type=types.output_type)
-        print(schedules)
+
+        if schedules is None or len(schedules) == 0:
+            raise ValueError("No schedules found to sweep")
+
         for schedule in reversed(schedules):
             res = bench_fns(label, sub_label, "machete_best", [
                 machete_create_bench_fn(
@@ -559,7 +559,8 @@ Benchmark Machete GEMM.
     parser.add_argument(
         "--group-size",
         type=int,
-        help="Available options are ['None', '-1', '128']",
+        help="Available options are ['None', '-1', '128'], default=128",
+        default=128,
     )
     parser.add_argument(
         "--sweep-schedules",
