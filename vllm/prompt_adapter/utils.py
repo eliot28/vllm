@@ -14,8 +14,6 @@ SAFETENSORS_WEIGHTS_NAME = "adapter_model.safetensors"
 def infer_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
     return "cpu"
 
 
@@ -85,10 +83,7 @@ def load_peft_weights(model_id: str,
                     {SAFETENSORS_WEIGHTS_NAME} is present at {model_id}.")
 
     if use_safetensors:
-        if hasattr(torch.backends, "mps") and (device == torch.device("mps")):
-            adapters_weights = safe_load_file(filename, device="cpu")
-        else:
-            adapters_weights = safe_load_file(filename, device=device)
+        adapters_weights = safe_load_file(filename, device=device)
     else:
         adapters_weights = torch.load(filename,
                                       map_location=torch.device(device))
