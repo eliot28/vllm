@@ -25,7 +25,7 @@ from .siglip import (SiglipVisionModel, dummy_image_for_siglip,
                      dummy_seq_data_for_siglip, get_max_siglip_image_tokens,
                      input_processor_for_siglip)
 from .utils import (filter_weights, init_vllm_registered_model,
-                    merge_multimodal_embeddings)
+                    is_pp_missing_parameter, merge_multimodal_embeddings)
 
 
 class LlavaImagePixelInputs(TypedDict):
@@ -208,6 +208,9 @@ class LlavaForConditionalGeneration(nn.Module, SupportsMultiModal):
         self.language_model = init_vllm_registered_model(
             config.text_config, cache_config, quant_config)
 
+        self.make_empty_intermediate_tensors = (
+            self.language_model.model.make_empty_intermediate_tensors)
+
     def _validate_pixel_values(self, data: torch.Tensor) -> torch.Tensor:
         h = w = self.config.vision_config.image_size
         expected_dims = (3, h, w)
@@ -363,7 +366,7 @@ class LlavaForConditionalGeneration(nn.Module, SupportsMultiModal):
                                                   positions,
                                                   kv_caches,
                                                   attn_metadata,
-                                                  None,
+                                                  intermediate_tensors,
                                                   inputs_embeds=inputs_embeds)
 
         return hidden_states
@@ -395,6 +398,8 @@ class LlavaForConditionalGeneration(nn.Module, SupportsMultiModal):
         mlp_weights = filter_weights(mlp_weights, "multi_modal_projector")
         mlp_params_dict = dict(self.multi_modal_projector.named_parameters())
         for name, loaded_weight in mlp_weights:
+            if is_pp_missing_parameter(name, self.multi_modal_projector):
+                continue
             param = mlp_params_dict[name]
             weight_loader = getattr(param, "weight_loader",
                                     default_weight_loader)

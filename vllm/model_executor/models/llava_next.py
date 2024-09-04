@@ -31,7 +31,7 @@ from .siglip import (SiglipVisionModel, dummy_image_for_siglip,
                      dummy_seq_data_for_siglip, get_siglip_image_feature_size,
                      get_siglip_patch_grid_length, input_processor_for_siglip)
 from .utils import (filter_weights, flatten_bn, init_vllm_registered_model,
-                    merge_multimodal_embeddings)
+                    is_pp_missing_parameter, merge_multimodal_embeddings)
 
 logger = init_logger(__name__)
 
@@ -312,6 +312,8 @@ class LlavaNextForConditionalGeneration(nn.Module, SupportsMultiModal):
 
         self.language_model = init_vllm_registered_model(
             config.text_config, cache_config, quant_config)
+        self.make_empty_intermediate_tensors = (
+            self.language_model.model.make_empty_intermediate_tensors)
 
         self.image_newline = nn.Parameter(
             torch.empty(config.text_config.hidden_size))
@@ -611,7 +613,7 @@ class LlavaNextForConditionalGeneration(nn.Module, SupportsMultiModal):
                                                   positions,
                                                   kv_caches,
                                                   attn_metadata,
-                                                  None,
+                                                  intermediate_tensors,
                                                   inputs_embeds=inputs_embeds)
 
         return hidden_states
@@ -644,6 +646,8 @@ class LlavaNextForConditionalGeneration(nn.Module, SupportsMultiModal):
         mlp_weights = filter_weights(mlp_weights, "multi_modal_projector")
         mlp_params_dict = dict(self.multi_modal_projector.named_parameters())
         for name, loaded_weight in mlp_weights:
+            if is_pp_missing_parameter(name, self.multi_modal_projector):
+                continue
             param = mlp_params_dict[name]
             weight_loader = getattr(param, "weight_loader",
                                     default_weight_loader)

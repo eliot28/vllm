@@ -44,7 +44,8 @@ from vllm.utils import is_list_of
 
 from .clip import dummy_image_for_clip, dummy_seq_data_for_clip
 from .interfaces import SupportsMultiModal
-from .utils import flatten_bn, merge_multimodal_embeddings
+from .utils import (flatten_bn, is_pp_missing_parameter,
+                    merge_multimodal_embeddings)
 
 logger = init_logger(__name__)
 
@@ -517,6 +518,8 @@ class Phi3VForCausalLM(nn.Module, SupportsMultiModal):
             self.lm_head.weight = self.model.embed_tokens.weight
         self.logits_processor = LogitsProcessor(config.vocab_size)
         self.sampler = Sampler()
+        self.make_empty_intermediate_tensors = (
+            self.model.make_empty_intermediate_tensors)
 
     def _validate_image_sizes(self, data: torch.Tensor) -> torch.Tensor:
         expected_dims = (2, )
@@ -683,7 +686,9 @@ class Phi3VForCausalLM(nn.Module, SupportsMultiModal):
             for (param_name, weight_name, shard_id) in stacked_params_mapping:
                 if weight_name not in name:
                     continue
-
+                if is_pp_missing_parameter(
+                        name.replace(weight_name, param_name), self):
+                    continue
                 param = params_dict[name.replace(weight_name, param_name)]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
@@ -693,6 +698,8 @@ class Phi3VForCausalLM(nn.Module, SupportsMultiModal):
                 if name.endswith(".bias") and name not in params_dict:
                     continue
                 if name in params_dict:
+                    if is_pp_missing_parameter(name, self):
+                        continue
                     param = params_dict[name]
                     weight_loader = getattr(param, "weight_loader",
                                             default_weight_loader)

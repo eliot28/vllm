@@ -43,7 +43,7 @@ from vllm.sequence import (VLLM_TOKEN_ID_ARRAY_TYPE, IntermediateTensors,
                            SequenceData)
 
 from .interfaces import SupportsMultiModal
-from .utils import merge_multimodal_embeddings
+from .utils import is_pp_missing_parameter, merge_multimodal_embeddings
 
 logger = init_logger(__name__)
 
@@ -244,6 +244,8 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal):
         self.language_model = PersimmonForCausalLM(config,
                                                    cache_config=cache_config,
                                                    quant_config=quant_config)
+        self.make_empty_intermediate_tensors = (
+            self.language_model.make_empty_intermediate_tensors)
 
     def _parse_and_validate_image_input(
             self, **kwargs: object) -> Optional[FuyuImagePixelInputs]:
@@ -297,6 +299,7 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal):
             positions=positions,
             kv_caches=kv_caches,
             attn_metadata=attn_metadata,
+            intermediate_tensors=intermediate_tensors,
             inputs_embeds=inputs_embeds,
         )
         return hidden_states
@@ -327,6 +330,8 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal):
                     or "rotary_emb.sin_cached" in name):
                 # Models trained using ColossalAI may include these tensors in
                 # the checkpoint. Skip them.
+                continue
+            if is_pp_missing_parameter(name, self):
                 continue
             param = params_dict[name]
 
