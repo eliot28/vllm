@@ -90,7 +90,7 @@ class PromptAdapterModel(AdapterModel):
         config: PromptAdapterConfig,
         device: str = "cuda",
     ) -> "PromptAdapterModel":
-        from peft.utils import load_peft_weights
+        from .utils import load_peft_weights
 
         if num_virtual_tokens > config.max_prompt_adapter_token:
             raise ValueError(
