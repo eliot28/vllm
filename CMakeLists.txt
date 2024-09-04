@@ -115,6 +115,8 @@ if (NOT VLLM_TARGET_DEVICE STREQUAL "cuda" AND
     return()
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/cpu_extension.cmake)
+
 #
 # Set up GPU language and check the torch version and warn if it isn't
 # what is expected.

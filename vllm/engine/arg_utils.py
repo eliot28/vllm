@@ -149,6 +149,7 @@ class EngineArgs:
     otlp_traces_endpoint: Optional[str] = None
     collect_detailed_traces: Optional[str] = None
     disable_async_output_proc: bool = False
+    cpu_draft_worker: Optional[bool] = None
 
     def __post_init__(self):
         if self.tokenizer is None:
@@ -677,6 +678,13 @@ class EngineArgs:
             'calculation in proposal sampling, target sampling, and after '
             'accepted tokens are determined.')
 
+        parser.add_argument('--cpu-draft-worker',
+                            action=StoreBoolean,
+                            default=EngineArgs.cpu_draft_worker,
+                            nargs="?",
+                            const="True",
+                            help='Use CPU to run draft model.')
+
         parser.add_argument('--model-loader-extra-config',
                             type=nullable_str,
                             default=EngineArgs.model_loader_extra_config,
@@ -895,6 +903,7 @@ class EngineArgs:
             typical_acceptance_sampler_posterior_alpha=self.
             typical_acceptance_sampler_posterior_alpha,
             disable_logprobs=self.disable_logprobs_during_spec_decoding,
+            cpu_draft_worker=self.cpu_draft_worker,
         )
 
         if self.num_scheduler_steps > 1:
