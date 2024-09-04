@@ -185,6 +185,14 @@ def apply_int8_linear(
     input_scale: Optional[torch.Tensor] = None,
     bias: Optional[torch.Tensor] = None,
 ):
+    if current_platform.is_tpu():
+        import torch_xla.experimental.xla_quantized_matmul  # noqa: F401
+        return torch.ops.xla.quantized_matmul(input,
+                                              weight.t(),
+                                              weight_scale.squeeze(-1).to(
+                                                  torch.bfloat16),
+                                              quantize_activation=True)
+
     # ops.scaled_int8_quant supports both dynamic and static quant.
     # * dynamic, layer.input_scale is None and x_scale computed from x.
     # * static, layer.input_scale is scalar and x_scale is input_scale.
