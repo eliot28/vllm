@@ -1,3 +1,5 @@
+# code borrowed from: https://github.com/huggingface/peft/blob/c9f7240afc616d72ea62fc9fba7bb53e858fbde1/src/peft/utils/save_and_load.py#L486
+
 import os
 from typing import Optional
 
