@@ -1,3 +1,4 @@
+import copy
 from typing import Dict, List, Optional, Tuple
 
 from vllm.sequence import Logprob, SamplingParams, Sequence, SequenceGroup
@@ -90,7 +91,7 @@ class Detokenizer:
             prefix_offset = next_iter_prefix_offset
             read_offset = next_iter_read_offset
             if prev_tokens is None:
-                prev_tokens = next_iter_tokens
+                prev_tokens = copy.deepcopy(next_iter_tokens)
             else:
                 prev_tokens.extend(next_iter_tokens)
 
