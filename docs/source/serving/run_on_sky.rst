@@ -7,10 +7,6 @@ Deploying and scaling up with SkyPilot
    :alt: vLLM
    :align: center
 
-  <p align="center">
-    <img src="https://imgur.com/yxtzPEu.png" alt="vLLM"/>
-  </p>
-
 vLLM can be **run and scaled to multiple service replicas on clouds and Kubernetes** with `SkyPilot <https://github.com/skypilot-org/skypilot>`__, an open-source framework for running LLMs on any cloud. More examples for various open models, such as Llama-3, Mixtral, etc, can be found in `SkyPilot AI gallery <https://skypilot.readthedocs.io/en/latest/gallery/index.html>`__.
 
 
