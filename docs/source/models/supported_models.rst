@@ -227,6 +227,11 @@ Multimodal Language Models
     - Image\ :sup:`E+`
     - :code:`llava-hf/llava-v1.6-mistral-7b-hf`, :code:`llava-hf/llava-v1.6-vicuna-7b-hf`, etc.
     -
+  * - :code:`LlavaNextVideoForConditionalGeneration`
+    - LLaVA-NeXT-Video
+    - Video
+    - :code:`llava-hf/LLaVA-NeXT-Video-7B-hf`, etc.
+    -
   * - :code:`PaliGemmaForConditionalGeneration`
     - PaliGemma
     - Image\ :sup:`E`
