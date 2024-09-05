@@ -14,7 +14,7 @@ awscli
 einops # required for MPT, qwen-vl and Mamba
 httpx
 librosa # required for audio test
-peft
+accelerate
 requests
 ray
 sentence-transformers # required for embedding
