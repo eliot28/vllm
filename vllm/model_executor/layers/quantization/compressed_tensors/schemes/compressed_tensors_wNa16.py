@@ -5,10 +5,12 @@ import torch
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization.compressed_tensors.schemes import (
     CompressedTensorsScheme)
+from vllm.model_executor.layers.quantization.compressed_tensors.utils import (
+    ActivationOrdering)
 from vllm.model_executor.layers.quantization.utils.marlin_utils import (
     apply_gptq_marlin_linear, marlin_make_empty_g_idx, marlin_make_workspace,
-    marlin_permute_scales, replace_tensor, verify_marlin_supported,
-    verify_marlin_supports_shape)
+    marlin_permute_scales, marlin_sort_g_idx, replace_tensor,
+    verify_marlin_supported, verify_marlin_supports_shape)
 from vllm.model_executor.parameter import (BasevLLMParameter,
                                            ChannelQuantScaleParameter,
                                            GroupQuantScaleParameter,
@@ -28,11 +30,13 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
     def __init__(self,
                  strategy: str,
                  num_bits: int,
-                 group_size: Optional[int] = None):
+                 group_size: Optional[int] = None,
+                 actorder: Optional[ActivationOrdering] = None):
 
         self.pack_factor = 32 // num_bits
         self.strategy = strategy
         self.group_size = -1 if group_size is None else group_size
+        self.has_g_idx = actorder == ActivationOrdering.GROUP
 
         if self.group_size == -1 and self.strategy != "channel":
             raise ValueError("Marlin kernels require group quantization or "
@@ -123,6 +127,13 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
         layer.register_parameter("weight_scale", weight_scale)
         layer.register_parameter("weight_shape", weight_shape)
 
+        # group index (for activation reordering)
+        if self.has_g_idx:
+            weight_g_idx = BasevLLMParameter(data=torch.full(
+                (input_size_per_partition, ), -1, dtype=torch.int32),
+                                             weight_loader=weight_loader)
+            layer.register_parameter("weight_g_idx", weight_g_idx)
+
         layer.input_size_per_partition = input_size_per_partition
         layer.output_size_per_partition = output_size_per_partition
         layer.input_size = input_size
@@ -137,9 +148,14 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
         layer.workspace = marlin_make_workspace(
             layer.output_size_per_partition, device)
 
-        # Act-order not supported in compressed-tensors yet, so set to empty.
-        layer.g_idx = marlin_make_empty_g_idx(device)
-        layer.g_idx_sort_indices = marlin_make_empty_g_idx(device)
+        # Handle sorting for activation reordering if needed.
+        if self.has_g_idx:
+            g_idx, g_idx_sort_indices = marlin_sort_g_idx(layer.weight_g_idx)
+            layer.g_idx_sort_indices = g_idx_sort_indices
+            replace_tensor(layer, "weight_g_idx", g_idx)
+        else:
+            layer.weight_g_idx = marlin_make_empty_g_idx(device)
+            layer.g_idx_sort_indices = marlin_make_empty_g_idx(device)
 
         # No zero-point
         layer.weight_zp = marlin_make_empty_g_idx(device)
@@ -161,7 +177,8 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
         # Permute scales from compressed-tensors format to marlin format.
         marlin_scales = marlin_permute_scales(
             layer.weight_scale,
-            size_k=layer.input_size_per_partition,
+            size_k=(layer.input_size
+                    if self.has_g_idx else layer.input_size_per_partition),
             size_n=layer.output_size_per_partition,
             group_size=layer.group_size)
         replace_tensor(layer, "weight_scale", marlin_scales)
@@ -174,7 +191,7 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
             weight=layer.weight_packed,
             weight_scale=layer.weight_scale,
             weight_zp=layer.weight_zp,
-            g_idx=layer.g_idx,
+            g_idx=layer.weight_g_idx,
             g_idx_sort_indices=layer.g_idx_sort_indices,
             workspace=layer.workspace,
             wtype=self.quant_type,
