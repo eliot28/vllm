@@ -13,7 +13,8 @@ from vllm.core.scheduler import SchedulerOutputs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_timeout import asyncio_timeout
 from vllm.engine.llm_engine import (DecoderPromptComponents, LLMEngine,
-                                    PromptComponents, SchedulerOutputState)
+                                    PromptComponents, QueueOverflowError,
+                                    SchedulerOutputState)
 from vllm.engine.metrics_types import StatLoggerBase
 from vllm.executor.executor_base import ExecutorAsyncBase
 from vllm.executor.ray_utils import initialize_ray_cluster, ray
@@ -838,19 +839,22 @@ class AsyncLLMEngine:
         """Kick the engine to process the waiting requests.
 
         Returns True if there are in-progress requests."""
-
         new_requests, aborted_requests = (
             self._request_tracker.get_new_and_aborted_requests())
 
         for new_request in new_requests:
-            # Add the request into the vLLM engine's waiting queue.
-            # TODO: Maybe add add_request_batch to reduce Ray overhead
             try:
                 if self.engine_use_ray:
                     await self.engine.add_request.remote(  # type: ignore
                         **new_request)
                 else:
                     await self.engine.add_request_async(**new_request)
+            except QueueOverflowError as e:
+                self._request_tracker.process_exception(
+                    new_request["request_id"],
+                    e,
+                    verbose=self.log_requests,
+                )
             except ValueError as e:
                 # TODO: use a vLLM specific error for failed validation
                 self._request_tracker.process_exception(
