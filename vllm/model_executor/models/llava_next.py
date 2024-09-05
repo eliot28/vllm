@@ -631,14 +631,15 @@ class LlavaNextForConditionalGeneration(nn.Module, SupportsMultiModal):
     ) -> Optional[SamplerOutput]:
         return self.language_model.sample(logits, sampling_metadata)
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         # prepare weight iterators for components
         vit_weights, mlp_weights, newline_weights, llm_weights = itertools.tee(
             weights, 4)
 
         # load vision encoder
         vit_weights = filter_weights(vit_weights, "vision_tower")
-        self.vision_tower.load_weights(vit_weights)
+        self.vision_tower.load_weights(vit_weights, **kwargs)
 
         # load mlp projector
         mlp_weights = filter_weights(mlp_weights, "multi_modal_projector")
@@ -660,4 +661,4 @@ class LlavaNextForConditionalGeneration(nn.Module, SupportsMultiModal):
 
         # load llm backbone
         llm_weights = filter_weights(llm_weights, "language_model")
-        self.language_model.load_weights(llm_weights)
+        self.language_model.load_weights(llm_weights, **kwargs)

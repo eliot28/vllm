@@ -27,6 +27,7 @@ from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
 from vllm.model_executor.layers.sampler import SamplerOutput
+from vllm.model_executor.model_loader.loader import WeightProviderById
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.model_executor.models.interfaces import SupportsMultiModal
 from vllm.model_executor.models.utils import (filter_weights, flatten_bn,
@@ -255,10 +256,9 @@ class ModifiedWhisperEncoder(WhisperEncoder):
     Encoder portion of OpenAI's Whisper model.
 
     This implementation is a slightly modified version of HF Transformers'
-    Whisper Encoder, with only a few fixes:
-    1. base_model_prefix updated to allow for doing `.from_pretrained`
-       directly on the encoder
-    2. allow less than 30 second of audio padding to be passed in:
+    Whisper Encoder, with only a couple changes:
+    1. Training code is removed
+    2. Allow less than 30 second of audio padding to be passed in:
         - relaxed ValueError check for `input_features` length to be less
            than or equal to `expected_seq_length` instead of strictly equal
         - embed_pos is now sliced to match the length of `inputs_embeds`
@@ -266,8 +266,6 @@ class ModifiedWhisperEncoder(WhisperEncoder):
     Original: https://github.com/huggingface/transformers/blob/main/src/transformers/models/whisper/modeling_whisper.py
     See commentary: https://github.com/huggingface/transformers/issues/25744
     """
-
-    base_model_prefix = "model.encoder"
 
     def forward(
         self,
@@ -323,11 +321,7 @@ class UltravoxModel(nn.Module, SupportsMultiModal):
         self.multi_modal_config = multimodal_config
         assert self.multi_modal_config
 
-        if config.audio_model_id is not None:
-            self.audio_tower = ModifiedWhisperEncoder.from_pretrained(
-                config.audio_model_id)
-        else:
-            self.audio_tower = ModifiedWhisperEncoder(config.audio_config)
+        self.audio_tower = ModifiedWhisperEncoder(config.audio_config)
         self.multi_modal_projector = UltravoxProjector(config)
         self.language_model = init_vllm_registered_model(
             config.text_config, cache_config, quant_config)
@@ -451,11 +445,37 @@ class UltravoxModel(nn.Module, SupportsMultiModal):
     ) -> Optional[SamplerOutput]:
         return self.language_model.sample(logits, sampling_metadata)
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         # prepare weight iterators for components
-        projector_weights, llm_weights = itertools.tee(weights, 2)
 
-        # load projector weights
+        audio_tower_weights, projector_weights, llm_weights = itertools.tee(
+            weights, 3)
+
+        weight_provider: Optional[WeightProviderById] = kwargs.get(
+            "weight_provider")
+
+        # Load audio tower weights
+        if weight_provider and self.config.audio_model_id:
+            audio_tower_weights = weight_provider.get_model_weights_by_id(
+                self.audio_tower, self.config.audio_model_id, revision=None)
+
+            # Map the weights from the source model to the encoder.
+            audio_tower_weights = filter_weights(audio_tower_weights, "model")
+            audio_tower_weights = filter_weights(audio_tower_weights,
+                                                 "encoder")
+        else:
+            audio_tower_weights = filter_weights(audio_tower_weights,
+                                                 "audio_tower")
+
+        audio_params_dict = dict(self.audio_tower.named_parameters())
+        for name, loaded_weight in audio_tower_weights:
+            param = audio_params_dict[name]
+            weight_loader = getattr(param, "weight_loader",
+                                    default_weight_loader)
+            weight_loader(param, loaded_weight)
+
+        # Load projector weights
         projector_weights = filter_weights(projector_weights,
                                            "multi_modal_projector")
         projector_params_dict = dict(
@@ -466,6 +486,10 @@ class UltravoxModel(nn.Module, SupportsMultiModal):
                                     default_weight_loader)
             weight_loader(param, loaded_weight)
 
-        # load llm backbone
-        llm_weights = filter_weights(llm_weights, "language_model")
-        self.language_model.load_weights(llm_weights)
+        # Load LLM weights
+        if weight_provider and self.config.text_model_id:
+            llm_weights = weight_provider.get_model_weights_by_id(
+                self.language_model, self.config.text_model_id, revision=None)
+        else:
+            llm_weights = filter_weights(llm_weights, "language_model")
+        self.language_model.load_weights(llm_weights, **kwargs)

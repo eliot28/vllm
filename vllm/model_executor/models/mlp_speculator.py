@@ -187,7 +187,8 @@ class MLPSpeculator(nn.Module):
 
         return next_tokens
 
-    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]],
+                     **kwargs):
         params_dict = dict(self.named_parameters())
         for name, loaded_weight in weights:
             param = params_dict.get(name.replace("speculator.", ""))
