@@ -40,7 +40,6 @@ from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
 from vllm.model_executor.layers.rotary_embedding import get_rope
-from vllm.model_executor.layers.sampler import Sampler
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
@@ -300,8 +299,8 @@ class GraniteMoeModel(nn.Module):
         for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
             hidden_states = layer(positions, hidden_states,
-                                            kv_caches[i - self.start_layer],
-                                            attn_metadata)
+                                  kv_caches[i - self.start_layer],
+                                  attn_metadata)
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,

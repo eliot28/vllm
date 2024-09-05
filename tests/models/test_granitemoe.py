@@ -16,6 +16,7 @@ MODELS = [
     "ibm/PowerMoE-3b",
 ]
 
+
 # TODO awaiting huggingface PR acceptance.
 # @pytest.mark.skipif(TRANSFORMERS_VERSION < (4, 45),
 #                     reason="granite model test requires transformers >= 4.45")

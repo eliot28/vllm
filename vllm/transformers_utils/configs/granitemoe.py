@@ -22,7 +22,6 @@
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -96,9 +95,9 @@ class GraniteMoeConfig(PretrainedConfig):
         num_local_experts (`int`, *optional*, defaults to 8): total number of experts
         num_experts_per_tok (`int`, *optional*, defaults to 2): number of experts per token
         output_router_logits (`bool`, *optional*, defaults to `False`):
-            Whether or not the router logits should be returned by the model. Enabeling this will also
+            Whether or not the router logits should be returned by the model. Enabling this will also
             allow the model to output the auxiliary loss.
-        router_aux_loss_coef (`float`, *optional*, defaults to 0.001): router auxialiary loss coefficient
+        router_aux_loss_coef (`float`, *optional*, defaults to 0.001): router auxiliary loss coefficient
 
     ```python
     >>> from transformers import GraniteMoeModel, GraniteMoeConfig
@@ -194,15 +193,21 @@ class GraniteMoeConfig(PretrainedConfig):
         if self.rope_scaling is None:
             return
 
-        if not isinstance(self.rope_scaling, dict) or len(self.rope_scaling) != 2:
+        if not isinstance(self.rope_scaling,
+                          dict) or len(self.rope_scaling) != 2:
             raise ValueError(
-                "`rope_scaling` must be a dictionary with two fields, `type` and `factor`, " f"got {self.rope_scaling}"
-            )
+                "`rope_scaling` must be a dictionary with two fields, `type` and `factor`, "
+                f"got {self.rope_scaling}")
         rope_scaling_type = self.rope_scaling.get("type", None)
         rope_scaling_factor = self.rope_scaling.get("factor", None)
-        if rope_scaling_type is None or rope_scaling_type not in ["linear", "dynamic"]:
+        if rope_scaling_type is None or rope_scaling_type not in [
+                "linear", "dynamic"
+        ]:
             raise ValueError(
                 f"`rope_scaling`'s type field must be one of ['linear', 'dynamic'], got {rope_scaling_type}"
             )
-        if rope_scaling_factor is None or not isinstance(rope_scaling_factor, float) or rope_scaling_factor <= 1.0:
-            raise ValueError(f"`rope_scaling`'s factor field must be a float > 1, got {rope_scaling_factor}")
+        if rope_scaling_factor is None or not isinstance(
+                rope_scaling_factor, float) or rope_scaling_factor <= 1.0:
+            raise ValueError(
+                f"`rope_scaling`'s factor field must be a float > 1, got {rope_scaling_factor}"
+            )
