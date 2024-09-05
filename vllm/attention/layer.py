@@ -93,6 +93,9 @@ class Attention(nn.Module):
         kv_cache: Optional[torch.Tensor],
         attn_metadata: AttentionMetadata,
         attn_type: AttentionType = AttentionType.DECODER,
+        aux_stream: Optional[torch.cuda.Stream] = None,
+        event_start: Optional[torch.cuda.Event] = None,
+        event_end: Optional[torch.cuda.Event] = None,
     ) -> torch.Tensor:
 
         return self.impl.forward(query,
@@ -102,7 +105,10 @@ class Attention(nn.Module):
                                  attn_metadata,
                                  self._k_scale,
                                  self._v_scale,
-                                 attn_type=attn_type)
+                                 attn_type=attn_type,
+                                 aux_stream=aux_stream,
+                                 event_start=event_start,
+                                 event_end=event_end)
 
     def extra_repr(self) -> str:
         s = f"head_size={self.impl.head_size}"  # type: ignore
