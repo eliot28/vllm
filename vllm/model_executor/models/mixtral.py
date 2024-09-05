@@ -48,7 +48,7 @@ from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 
 from .interfaces import SupportsLoRA
-from .utils import is_pp_missing_parameter, make_layers
+from .utils import get_inputs_embeds, is_pp_missing_parameter, make_layers
 
 
 class MixtralMoE(nn.Module):
@@ -284,9 +284,13 @@ class MixtralModel(nn.Module):
         kv_caches: List[torch.Tensor],
         attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors],
+        inputs_embeds: Optional[torch.Tensor] = None,
+        inputs_embeds_masks: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if get_pp_group().is_first_rank:
-            hidden_states = self.embed_tokens(input_ids)
+            hidden_states = get_inputs_embeds(input_ids, self.embed_tokens,
+                                              inputs_embeds,
+                                              inputs_embeds_masks)
             residual = None
         else:
             assert intermediate_tensors is not None
@@ -373,9 +377,12 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
         kv_caches: List[torch.Tensor],
         attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        inputs_embeds_masks: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         hidden_states = self.model(input_ids, positions, kv_caches,
-                                   attn_metadata, intermediate_tensors)
+                                   attn_metadata, intermediate_tensors,
+                                   inputs_embeds, inputs_embeds_masks)
         return hidden_states
 
     def compute_logits(

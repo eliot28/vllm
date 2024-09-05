@@ -1,6 +1,7 @@
 from typing import (TYPE_CHECKING, Generic, Iterable, List, Optional, Tuple,
                     Union)
 
+import torch
 from typing_extensions import NotRequired, TypedDict, TypeVar
 
 if TYPE_CHECKING:
@@ -33,12 +34,26 @@ class TokensPrompt(TypedDict):
     """
 
 
-SingletonPromptInputs = Union[str, TextPrompt, TokensPrompt]
+class EmbedsPrompt(TypedDict):
+    """Schema for a tokenized prompt."""
+
+    prompt_embeds: torch.Tensor
+    """Embeddings of the prompt to pass to the model."""
+
+    multi_modal_data: NotRequired["MultiModalDataDict"]
+    """
+    Optional multi-modal data to pass to the model,
+    if the model supports it.
+    """
+
+
+SingletonPromptInputs = Union[str, TextPrompt, TokensPrompt, EmbedsPrompt]
 """
 Set of possible schemas for a single LLM input:
 
 - A text prompt (:class:`str` or :class:`TextPrompt`)
 - A tokenized prompt (:class:`TokensPrompt`)
+- Embeddings of a prompt (:class:`EmbedsPrompt`)
 
 Note that "singleton" is as opposed to a data structure
 which encapsulates multiple prompts, i.e. of the sort
@@ -67,7 +82,7 @@ _T2_co = TypeVar("_T2_co",
 # TODO: Make fields ReadOnly once mypy supports it
 class ExplicitEncoderDecoderPrompt(TypedDict, Generic[_T1_co, _T2_co]):
     """Represents an encoder/decoder model input prompt,
-    comprising an explicit encoder prompt and a 
+    comprising an explicit encoder prompt and a
     decoder prompt.
 
     The encoder and decoder prompts, respectively,
@@ -114,6 +129,11 @@ class LLMInputs(TypedDict):
     prompt: NotRequired[Optional[str]]
     """
     The original prompt text corresponding to the token IDs, if available.
+    """
+
+    prompt_embeds: NotRequired[Optional[torch.Tensor]]
+    """
+    The embeddings of the prompt, if available.
     """
 
     multi_modal_data: NotRequired[Optional["MultiModalDataDict"]]

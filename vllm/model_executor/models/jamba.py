@@ -38,6 +38,8 @@ from vllm.sequence import IntermediateTensors
 from vllm.worker.model_runner import (_BATCH_SIZES_TO_CAPTURE,
                                       _get_graph_batch_size)
 
+from .utils import get_inputs_embeds
+
 KVCache = Tuple[torch.Tensor, torch.Tensor]
 
 
@@ -507,8 +509,11 @@ class JambaModel(nn.Module):
         attn_metadata: AttentionMetadata,
         conv_state: torch.Tensor,
         ssm_state: torch.Tensor,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        inputs_embeds_masks: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        hidden_states = self.embed_tokens(input_ids)
+        hidden_states = get_inputs_embeds(input_ids, self.embed_tokens,
+                                          inputs_embeds, inputs_embeds_masks)
         residual = None
 
         for i in range(len(self.layers)):
@@ -608,6 +613,8 @@ class JambaForCausalLM(nn.Module, HasInnerState):
                 kv_caches: List[KVCache],
                 attn_metadata: AttentionMetadata,
                 intermediate_tensors: Optional[IntermediateTensors] = None,
+                inputs_embeds: Optional[torch.Tensor] = None,
+                inputs_embeds_masks: Optional[torch.Tensor] = None,
                 **kwargs):
         if not self.mamba_cache:
             self._prepare_mamba_cache()
@@ -630,9 +637,14 @@ class JambaForCausalLM(nn.Module, HasInnerState):
             # CUDA graph capturing runs
             mamba_cache = kwargs["seqlen_agnostic_capture_inputs"]
 
-        hidden_states = self.model(input_ids, positions, kv_caches,
-                                   attn_metadata, mamba_cache[0],
-                                   mamba_cache[1])
+        hidden_states = self.model(input_ids,
+                                   positions,
+                                   kv_caches,
+                                   attn_metadata,
+                                   mamba_cache[0],
+                                   mamba_cache[1],
+                                   inputs_embeds=inputs_embeds,
+                                   inputs_embeds_masks=inputs_embeds_masks)
         return hidden_states
 
     def _swap_mamba_cache(self, from_index: int, to_index: int):
@@ -769,9 +781,9 @@ class JambaForCausalLM(nn.Module, HasInnerState):
 
     def copy_inputs_before_cuda_graphs(self, input_buffers, **kwargs):
         """
-        Copy the relevant Mamba cache into the CUDA graph input buffer 
-        that was provided during the capture runs 
-        (JambaForCausalLM.mamba_gc_cache_buffer). 
+        Copy the relevant Mamba cache into the CUDA graph input buffer
+        that was provided during the capture runs
+        (JambaForCausalLM.mamba_gc_cache_buffer).
         """
         assert all(
             key in kwargs
@@ -787,7 +799,7 @@ class JambaForCausalLM(nn.Module, HasInnerState):
     def get_seqlen_agnostic_capture_inputs(self, batch_size: int):
         """
         Provide the CUDA graph capture runs with a buffer in adjusted size.
-        The buffer is used to maintain the Mamba Cache during the CUDA graph 
+        The buffer is used to maintain the Mamba Cache during the CUDA graph
         replay runs.
         """
         return tuple(buffer[:, :batch_size] for buffer in self.mamba_cache)

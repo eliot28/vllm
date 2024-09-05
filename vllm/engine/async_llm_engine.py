@@ -31,6 +31,7 @@ from vllm.sequence import ExecuteModelRequest
 from vllm.transformers_utils.tokenizer import AnyTokenizer
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import print_warning_once
+from vllm.worker.worker_base import WorkerWrapperBase
 
 logger = init_logger(__name__)
 ENGINE_ITERATION_TIMEOUT_S = envs.VLLM_ENGINE_ITERATION_TIMEOUT_S
@@ -433,8 +434,24 @@ class _AsyncLLMEngine(LLMEngine):
                 lora_request=lora_request,
             )
             multi_modal_data = None
+            prompt_embeds = None
         elif isinstance(inputs, dict):
-            if "prompt_token_ids" in inputs:
+            prompt_embeds = inputs.get("prompt_embeds")
+            driver_worker = self.model_executor.driver_worker
+            if prompt_embeds is not None:
+                if self.speculative_config is not None:
+                    raise ValueError(
+                        "Speculative decoding does not support prompt_embeds.")
+                model_runner = driver_worker.worker.model_runner if isinstance(
+                    driver_worker,
+                    WorkerWrapperBase) else driver_worker.model_runner
+                if not model_runner.model_supports_input_embeds:
+                    raise ValueError(
+                        f"Model {self.model_config.model} does not support "
+                        "input embeddings, but prompt_embeds was provided.")
+                prompt = None
+                prompt_token_ids = []
+            elif "prompt_token_ids" in inputs:
                 prompt = None
                 prompt_token_ids = inputs["prompt_token_ids"]
             else:
@@ -450,7 +467,7 @@ class _AsyncLLMEngine(LLMEngine):
         else:
             assert_never(inputs)
 
-        return prompt, prompt_token_ids, multi_modal_data
+        return prompt, prompt_token_ids, prompt_embeds, multi_modal_data
 
     async def _process_encoder_decoder_prompt_async(
         self,
@@ -469,7 +486,7 @@ class _AsyncLLMEngine(LLMEngine):
 
             if (decoder_input := inputs["decoder_prompt"]) is None:
                 encoder_comps = await encoder_task
-                decoder_comps = None, None, None
+                decoder_comps = None, None, None, None
             else:
                 decoder_task = self._extract_prompt_components_async(
                     decoder_input,
@@ -484,7 +501,7 @@ class _AsyncLLMEngine(LLMEngine):
                 request_id=request_id,
             )
 
-            decoder_comps = None, None, None
+            decoder_comps = None, None, None, None
 
         return self._build_enc_dec_llm_inputs(encoder_comps, decoder_comps)
 
@@ -1020,7 +1037,7 @@ class AsyncLLMEngine:
             request_id: The unique id of the request.
             lora_request: LoRA request to use for generation, if any.
             trace_headers: OpenTelemetry trace headers.
-            prompt_adapter_request: Prompt Adapter request to use 
+            prompt_adapter_request: Prompt Adapter request to use
                                             for generation, if any.
 
         Yields:

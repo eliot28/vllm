@@ -54,6 +54,7 @@ from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter, Device
 from vllm.version import __version__ as VLLM_VERSION
+from vllm.worker.worker_base import WorkerWrapperBase
 
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
@@ -75,9 +76,10 @@ def _load_generation_config_dict(model_config: ModelConfig) -> Dict[str, Any]:
 _G = TypeVar("_G", bound=BaseTokenizerGroup, default=BaseTokenizerGroup)
 _O = TypeVar("_O", RequestOutput, EmbeddingRequestOutput)
 
-PromptComponents = Tuple[Optional[str], List[int],
+PromptComponents = Tuple[Optional[str], List[int], Optional[torch.Tensor],
                          Optional[MultiModalDataDict]]
 DecoderPromptComponents = Tuple[Optional[str], Optional[List[int]],
+                                Optional[torch.Tensor],
                                 Optional[MultiModalDataDict]]
 
 
@@ -131,7 +133,7 @@ class LLMEngine:
             decoding.
         executor_class: The model executor class for managing distributed
             execution.
-        prompt_adapter_config (Optional): The configuration related to serving 
+        prompt_adapter_config (Optional): The configuration related to serving
             prompt adapters.
         log_stats: Whether to log statistics.
         usage_context: Specified entry point, used for usage info collection.
@@ -796,9 +798,9 @@ class LLMEngine:
 
         * prompt
         * prompt_token_ids
+        * prompt_embeds
         * multi_modal_data
         '''
-
         if isinstance(inputs, str):
             prompt = inputs
             prompt_token_ids = self._tokenize_prompt(
@@ -807,8 +809,24 @@ class LLMEngine:
                 lora_request=lora_request,
             )
             multi_modal_data = None
+            prompt_embeds = None
         elif isinstance(inputs, dict):
-            if "prompt_token_ids" in inputs:
+            prompt_embeds = inputs.get("prompt_embeds")
+            driver_worker = self.model_executor.driver_worker
+            if prompt_embeds is not None:
+                if self.speculative_config is not None:
+                    raise ValueError(
+                        "Speculative decoding does not support prompt_embeds.")
+                model_runner = driver_worker.worker.model_runner if isinstance(
+                    driver_worker,
+                    WorkerWrapperBase) else driver_worker.model_runner
+                if not model_runner.model_supports_input_embeds:
+                    raise ValueError(
+                        f"Model {self.model_config.model} does not support "
+                        "input embeddings, but prompt_embeds was provided.")
+                prompt = None
+                prompt_token_ids = []
+            elif "prompt_token_ids" in inputs:
                 prompt = None
                 prompt_token_ids = inputs["prompt_token_ids"]
             else:
@@ -824,7 +842,7 @@ class LLMEngine:
         else:
             assert_never(inputs)
 
-        return prompt, prompt_token_ids, multi_modal_data
+        return prompt, prompt_token_ids, prompt_embeds, multi_modal_data
 
     def _apply_prompt_adapter(
         self,
@@ -860,7 +878,7 @@ class LLMEngine:
         "default" decoder prompt be <BOS>.
 
         However, it is possible that in the future
-        other models may have different or more 
+        other models may have different or more
         complex logic for the default decoder prompt.
         This motivates having a special helper method
         for default decoder prompts.
@@ -879,8 +897,8 @@ class LLMEngine:
         encoder_comps: PromptComponents,
         decoder_comps: DecoderPromptComponents,
     ) -> EncoderDecoderLLMInputs:
-        encoder_prompt, encoder_prompt_ids, encoder_mm_data = encoder_comps
-        decoder_prompt, decoder_prompt_ids, decoder_mm_data = decoder_comps
+        encoder_prompt, encoder_prompt_ids, _, encoder_mm_data = encoder_comps
+        decoder_prompt, decoder_prompt_ids, _, decoder_mm_data = decoder_comps
 
         if encoder_mm_data is not None or decoder_mm_data is not None:
             raise ValueError("Multi-modal encoder-decoder models are "
@@ -923,7 +941,7 @@ class LLMEngine:
         have any possible singleton type; thus this
         method relies on helper functions to obtain
         token ids for the sub-prompts.
-        
+
         Arguments:
 
         * inputs: an input prompt
@@ -944,7 +962,7 @@ class LLMEngine:
             )
 
             if (decoder_input := inputs["decoder_prompt"]) is None:
-                decoder_comps = None, None, None
+                decoder_comps = None, None, None, None
             else:
                 decoder_comps = self._extract_prompt_components(
                     decoder_input,
@@ -956,7 +974,7 @@ class LLMEngine:
                 request_id=request_id,
             )
 
-            decoder_comps = None, None, None
+            decoder_comps = None, None, None, None
 
         return self._build_enc_dec_llm_inputs(encoder_comps, decoder_comps)
 
@@ -965,13 +983,14 @@ class LLMEngine:
         prompt_comps: PromptComponents,
         prompt_adapter_request: Optional[PromptAdapterRequest],
     ) -> LLMInputs:
-        prompt, prompt_token_ids, multi_modal_data = prompt_comps
+        prompt, prompt_token_ids, prompt_embeds, multi_modal_data = prompt_comps
 
         prompt_token_ids = self._apply_prompt_adapter(
             prompt_token_ids, prompt_adapter_request=prompt_adapter_request)
 
         return LLMInputs(prompt_token_ids=prompt_token_ids,
                          prompt=prompt,
+                         prompt_embeds=prompt_embeds,
                          multi_modal_data=multi_modal_data)
 
     def _process_decoder_only_prompt(
@@ -1250,18 +1269,18 @@ class LLMEngine:
         """Apply the model output to the sequences in the scheduled seq groups.
 
         virtual_engine: The engine id to operate on
-        
-        is_async: Indicates whether this postprocessor runs in 
-            parallel with the GPU forward pass and is processing 
+
+        is_async: Indicates whether this postprocessor runs in
+            parallel with the GPU forward pass and is processing
             tokens from the previous step. If this is true, then
             no tokens need to be appended since it is already done
             externally (before the next schedule() call)
-        
-        sampler_output: Used with multi-step execution to provide 
+
+        sampler_output: Used with multi-step execution to provide
             sampler_output of each step
         is_last_output: Used with multi-step execution to indicate
             the last step (of each multi-step group)
-            
+
         Returns RequestOutputs that can be returned to the client.
         """
         now = time.time()
@@ -1997,8 +2016,10 @@ class LLMEngine:
             prompt_ids = inputs.get("encoder_prompt_token_ids")
         else:
             prompt_ids = inputs.get("prompt_token_ids")
+            prompt_embeds = inputs.get("prompt_embeds")
 
-        if prompt_ids is None or len(prompt_ids) == 0:
+        if (prompt_ids is None
+                or len(prompt_ids) == 0) and prompt_embeds is None:
             raise ValueError("Prompt cannot be empty")
 
         if self.model_config.is_multimodal_model:

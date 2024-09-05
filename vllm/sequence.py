@@ -138,17 +138,20 @@ class SequenceData(msgspec.Struct,
 
     Args:
         prompt_token_ids: The token IDs of the prompt.
+        prompt_embeds: The embeddings of the prompt.
         output_token_ids: The token IDs of the output. Set to an empty list if
             None.
 
     Attributes:
         prompt_token_ids: The token IDs of the prompt.
+        prompt_embeds: The embeddings of the prompt.
         output_token_ids: The token IDs of the output.
         cumulative_logprob: The cumulative log probability of the output.
     """
     # NOTE: we cannot use Union[List, array] because msgspec cannot support
     # union of 2 list types.
     _prompt_token_ids: array
+    _prompt_embeds: Optional[List[torch.Tensor]] = None
     _output_token_ids: array = msgspec.field(
         default_factory=lambda: array(VLLM_TOKEN_ID_ARRAY_TYPE, []))
 
@@ -191,6 +194,14 @@ class SequenceData(msgspec.Struct,
         raise NotImplementedError
 
     @property
+    def prompt_embeds(self) -> Optional[torch.Tensor]:
+        return self._prompt_embeds
+
+    @prompt_embeds.setter
+    def prompt_embeds(self, new_prompt_embeds: Optional[torch.Tensor]) -> None:
+        self._prompt_embeds = new_prompt_embeds
+
+    @property
     def prompt_token_ids_array(self) -> array:
         """Return the prompt token ids in array type.
 
@@ -226,7 +237,10 @@ class SequenceData(msgspec.Struct,
         self._cumulative_logprob += logprob
 
     def get_len(self) -> int:
-        return len(self._output_token_ids) + len(self._prompt_token_ids)
+        if self._prompt_embeds is None:
+            return len(self._output_token_ids) + len(self._prompt_token_ids)
+        else:
+            return len(self._output_token_ids) + len(self._prompt_embeds)
 
     def get_prompt_len(self) -> int:
         return len(self._prompt_token_ids)
@@ -389,7 +403,8 @@ class Sequence:
                              "encoder input prompt fields?")
 
         self.data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, self.prompt_token_ids))
+            array(VLLM_TOKEN_ID_ARRAY_TYPE, self.prompt_token_ids),
+            self.prompt_embeds)
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
@@ -437,6 +452,10 @@ class Sequence:
         self._prompt_token_ids = cast(List[int],
                                       self.inputs.get(prompt_token_ids_key))
         return self._prompt_token_ids
+
+    @property
+    def prompt_embeds(self) -> Optional[torch.Tensor]:
+        return self.inputs.get("prompt_embeds")
 
     @property
     def multi_modal_data(self) -> "MultiModalDataDict":
@@ -627,6 +646,12 @@ class SequenceGroup:
         # All sequences in the group should have the same prompt.
         # We use the prompt of an arbitrary sequence.
         return self.seqs[0].prompt_token_ids
+
+    @property
+    def prompt_embeds(self) -> Optional[torch.Tensor]:
+        # All sequences in the group should have the same prompt.
+        # We use the prompt of an arbitrary sequence.
+        return self.seqs[0].prompt_embeds
 
     @property
     def encoder_prompt(self) -> Optional[str]:
@@ -872,7 +897,7 @@ class SequenceGroupMetadata(
         state: Internal state tied to this sequence group.
         multi_modal_data: Multi modal data.
         encoder_seq_data: Optional sequence data for encoder prompt
-                          (SequenceGroup.encoder_seq). Should be None 
+                          (SequenceGroup.encoder_seq). Should be None
                           unless you are working with an encoder/decoder
                           model.
         cross_block_table: Optional cross-attention block table associated
