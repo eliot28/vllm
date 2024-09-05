@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 VLLM_TOKEN_ID_ARRAY_TYPE = "l"
 
+VLLM_INVALID_TOKEN_ID = -1
+
 
 # We use dataclass for now because it is used for
 # openai server output, and msgspec is not serializable.
@@ -1081,6 +1083,17 @@ class PoolerOutput(
     def __eq__(self, other: object):
         return isinstance(other,
                           self.__class__) and self.outputs == other.outputs
+
+
+def get_all_seq_data_entries(
+    seq_group_metadata_list: List[SequenceGroupMetadata]
+) -> List[Tuple[int, SequenceData]]:
+    """Given a list of SequenceGroupMetadata, create a dict of
+    sequence ids to SequenceData
+    """
+    return [(seq_id, seq_data) for sg in seq_group_metadata_list \
+            for seq_id, seq_data in sg.seq_data.items()
+    ]
 
 
 def get_all_seq_ids(

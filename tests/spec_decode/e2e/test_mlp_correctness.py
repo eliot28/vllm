@@ -16,7 +16,7 @@ However, we still need to verify below scenario could be passed:
     * Test greedy equality under various number of speculative tokens.
 
 With those tests, we can say at least, MLPSpeculator would not break the
-correctess for the target model outputs.
+correctness for the target model outputs.
 """
 
 from unittest.mock import patch
@@ -65,6 +65,7 @@ PRECISION = "float32"
 @pytest.mark.parametrize("test_llm_kwargs", [
     {
         "speculative_model": SPEC_MODEL,
+        "disable_logprobs_during_spec_decoding": True,
     },
 ])
 @pytest.mark.parametrize("output_len", [
@@ -79,7 +80,8 @@ def test_mlp_e2e_greedy_correctness(baseline_llm_generator, test_llm_generator,
                                          test_llm_generator,
                                          batch_size,
                                          max_output_len=output_len,
-                                         force_output_len=True)
+                                         force_output_len=True,
+                                         num_logprobs=2)
 
 
 @pytest.mark.parametrize(
@@ -105,6 +107,7 @@ def test_mlp_e2e_greedy_correctness(baseline_llm_generator, test_llm_generator,
 @pytest.mark.parametrize("test_llm_kwargs", [
     {
         "speculative_model": SPEC_MODEL,
+        "disable_logprobs_during_spec_decoding": True,
     },
 ])
 @pytest.mark.parametrize("output_len", [2048])
