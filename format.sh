@@ -263,7 +263,7 @@ clang_format_changed() {
     MERGEBASE="$(git merge-base origin/main HEAD)"
 
     # Get the list of changed files, excluding the specified ones
-    changed_files=$(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.h' '*.cpp' '*.cu' '*.cuh' | grep -vFf <(printf "%s\n" "${CLANG_FORMAT_EXCLUDES[@]}"))
+    changed_files=$(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.h' '*.cpp' '*.cu' '*.cuh' | (grep -vFf <(printf "%s\n" "${CLANG_FORMAT_EXCLUDES[@]}") || echo -e))
     if [ -n "$changed_files" ]; then
         echo "$changed_files" | xargs -P 5 clang-format -i
     fi
@@ -286,6 +286,29 @@ else
 fi
 echo 'vLLM clang-format: Done'
 
+echo 'vLLM actionlint:'
+
+DOCKER=""
+if command -v "docker" &>/dev/null; then
+    DOCKER="docker"
+elif command -v "podman" &>/dev/null; then
+    DOCKER="podman"
+else
+    echo "Docker or Podman are not installed. Please install one if you want to lint GitHub CI configuration."
+fi
+
+actionlint() {
+    if [ -z "$DOCKER" ]; then
+        return
+    fi
+    # Ensure we use the same version of actionlint as CI
+    IMAGE="vllm/actionlint:latest"
+    ${DOCKER} build --tag "${IMAGE}" - < .github/workflows/actionlint.dockerfile
+    ${DOCKER} run --volume="${PWD}:/repo:z" --workdir=/repo "${IMAGE}" -color
+}
+
+actionlint
+echo 'vLLM actionlint: Done'
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted files. Please review and stage the changes.'
