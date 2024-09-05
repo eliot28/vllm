@@ -1,7 +1,9 @@
 import contextlib
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
 
+from huggingface_hub import hf_hub_download
 from transformers import GenerationConfig, PretrainedConfig
 from transformers.models.auto.image_processing_auto import (
     get_image_processor_config)
@@ -53,22 +55,26 @@ def get_config(
     code_revision: Optional[str] = None,
     rope_scaling: Optional[dict] = None,
     rope_theta: Optional[float] = None,
+    load_from_params: bool = False,
     **kwargs,
 ) -> PretrainedConfig:
-
     # Separate model folder from file path for GGUF models
+
     is_gguf = check_gguf_file(model)
     if is_gguf:
         kwargs["gguf_file"] = Path(model).name
         model = Path(model).parent
 
     try:
-        config = AutoConfig.from_pretrained(
-            model,
-            trust_remote_code=trust_remote_code,
-            revision=revision,
-            code_revision=code_revision,
-            **kwargs)
+        if load_from_params:
+            config = load_params_config(model, revision)
+        else:
+            config = AutoConfig.from_pretrained(
+                model,
+                trust_remote_code=trust_remote_code,
+                revision=revision,
+                code_revision=code_revision,
+                **kwargs)
     except ValueError as e:
         if (not trust_remote_code and
                 "requires you to execute the configuration file" in str(e)):
@@ -102,6 +108,54 @@ def get_config(
             config.update({key: value})
 
     return config
+
+
+def load_params_config(model, revision) -> PretrainedConfig:
+    # This function loads a params.json config which
+    # should be used when loading models in mistral format
+
+    config_file_name = "params.json"
+
+    config_path = Path(model) / config_file_name
+
+    if not config_path.is_file():
+        config_path = Path(
+            hf_hub_download(model, config_file_name, revision=revision))
+
+    with open(config_path, 'r') as file:
+        config_dict = json.load(file)
+
+    config_mapping = {
+        "dim": "hidden_size",
+        "norm_eps": "rms_norm_eps",
+        "n_kv_heads": "num_key_value_heads",
+        "n_layers": "num_hidden_layers",
+        "n_heads": "num_attention_heads",
+        "hidden_dim": "intermediate_size",
+    }
+
+    def recurse_elems(elem: Any):
+        if isinstance(elem, dict):
+            config_dict = {}
+            for key, value in elem.items():
+                key = config_mapping.get(key, key)
+                config_dict[key] = recurse_elems(value)
+            return PretrainedConfig(**config_dict)
+        else:
+            return elem
+
+    config_dict["model_type"] = config_dict.get("model_type", "transformer")
+    config_dict["hidden_act"] = config_dict.get("activation", "silu")
+    config_dict["tie_word_embeddings"] = config_dict.get(
+        "tie_embeddings", False)
+
+    if config_dict["model_type"] == "transformer":
+        if "moe" in config_dict:
+            config_dict["architectures"] = ["MixtralForCausalLM"]
+        else:
+            config_dict["architectures"] = ["MistralForCausalLM"]
+
+    return recurse_elems(config_dict)
 
 
 def get_hf_image_processor_config(

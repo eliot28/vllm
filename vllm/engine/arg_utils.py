@@ -813,7 +813,10 @@ class EngineArgs:
             served_model_name=self.served_model_name,
             limit_mm_per_prompt=self.limit_mm_per_prompt,
             use_async_output_proc=not self.disable_async_output_proc,
-            override_neuron_config=self.override_neuron_config)
+            override_neuron_config=self.override_neuron_config,
+            load_params_config=self.load_format == "mistral",
+        )
+
         cache_config = CacheConfig(
             block_size=self.block_size if self.device != "neuron" else
             self.max_model_len,  # neuron needs block_size = max_model_len
